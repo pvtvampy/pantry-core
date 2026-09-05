@@ -16,12 +16,12 @@ on:
   workflow_dispatch:
     inputs:
       mix_ref:
-        description: Workspace ref
+        description: Source ref
         required: false
         default: main
         type: string
       fill_ref:
-        description: Pantry ref
+        description: Delivery ref
         required: false
         default: main
         type: string
@@ -30,7 +30,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: headless-core-${{ inputs.mix_ref || 'main' }}-${{ inputs.fill_ref || 'main' }}
+  group: headless-core
   cancel-in-progress: false
 
 jobs:

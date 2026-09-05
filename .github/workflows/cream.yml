@@ -6,17 +6,7 @@ on:
       mix_ref:
         required: true
         type: string
-      stamp:
-        required: false
-        default: ''
-        type: string
   workflow_dispatch:
-    inputs:
-      stamp:
-        description: Shared base source stamp
-        required: false
-        default: ''
-        type: string
 
 permissions:
   contents: read
@@ -29,7 +19,7 @@ jobs:
   bake:
     name: Whip cream
     runs-on: windows-2025
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Dust counter
         shell: pwsh
@@ -54,15 +44,7 @@ jobs:
           mix_ref: ${{ inputs.mix_ref || 'main' }}
           fill: ${{ secrets.FILL_REPO }}
           fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-      - name: Thaw base
-        if: ${{ inputs.stamp != '' }}
-        uses: actions/cache@v6.1.0
-        with:
-          path: mix/Launcher/obj/SharedCore
-          key: meringue-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}-${{ inputs.stamp }}
-          fail-on-cache-miss: true
       - name: Prepare base
-        if: ${{ inputs.stamp == '' }}
         shell: pwsh
         env:
           CREAM_A: ${{ secrets[vars.CREAM_A_NAME] }}
@@ -74,7 +56,6 @@ jobs:
         run: |
           & ./mix/Tools/BakeSlice.ps1 -Fill (Join-Path $PWD.Path 'filling') -Slice Meringue
           exit $LASTEXITCODE
-
       - name: Bake
         shell: pwsh
         env:

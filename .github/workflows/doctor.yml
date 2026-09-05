@@ -9,33 +9,24 @@ on:
       fill_ref:
         required: true
         type: string
-      force:
-        required: false
-        default: false
-        type: boolean
   workflow_dispatch:
     inputs:
       mix_ref:
-        description: Workspace ref
+        description: Source ref
         required: false
         default: main
         type: string
       fill_ref:
-        description: Pantry ref
+        description: Delivery ref
         required: false
         default: main
         type: string
-      force:
-        description: Repeat checks for the same snapshot
-        required: false
-        default: true
-        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: kitchen-doctor-${{ inputs.mix_ref }}-${{ inputs.fill_ref }}
+  group: kitchen-doctor
   cancel-in-progress: false
 
 jobs:
@@ -48,6 +39,12 @@ jobs:
       fill_ref: ${{ steps.state.outputs.fill_ref }}
       workflow_ref: ${{ steps.state.outputs.workflow_ref }}
     steps:
+      - name: Dust counter
+        shell: pwsh
+        run: |
+          Write-Host "::add-mask::$env:GITHUB_REPOSITORY"
+          $crumb=$env:GITHUB_REPOSITORY -split '/',2
+          foreach($x in $crumb){if($x){Write-Host "::add-mask::$x"}}
       - name: Open recipe
         uses: actions/checkout@v6
         with:
@@ -62,10 +59,10 @@ jobs:
         with:
           mix: ${{ secrets.MIX_REPO }}
           mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
-          mix_ref: ${{ inputs.mix_ref }}
+          mix_ref: ${{ inputs.mix_ref || 'main' }}
           fill: ${{ secrets.FILL_REPO }}
           fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-          fill_ref: ${{ inputs.fill_ref }}
+          fill_ref: ${{ inputs.fill_ref || 'main' }}
       - name: Read marker
         id: state
         shell: pwsh
@@ -73,71 +70,46 @@ jobs:
           $mix=(& git -C mix rev-parse HEAD).Trim().ToLowerInvariant()
           $fill=(& git -C filling rev-parse HEAD).Trim().ToLowerInvariant()
           $flow=(& git -C recipe rev-parse 'HEAD:.github').Trim().ToLowerInvariant()
-          if($mix -notmatch '^[0-9a-f]{40}$' -or $fill -notmatch '^[0-9a-f]{40}$' -or $flow -notmatch '^[0-9a-f]{40}$'){throw 'Doctor source pin rejected'}
+          if($mix -notmatch '^[0-9a-f]{40}$' -or $fill -notmatch '^[0-9a-f]{40}$' -or $flow -notmatch '^[0-9a-f]{40}$'){throw 'snapshot rejected'}
           $run='true'
-          if('${{ inputs.force }}'-ne'true'){
-            & git -C filling fetch --quiet --force origin refs/tags/pastry-doctor:refs/tags/pastry-doctor 2>$null
-            if($LASTEXITCODE-eq0){
-              $msg=(& git -C filling tag -l pastry-doctor '--format=%(contents)')-join"`n"
-              $w=[regex]::Match($msg,'(?m)^workspace=([0-9a-f]{40})$').Groups[1].Value
-              $f=[regex]::Match($msg,'(?m)^pantry=([0-9a-f]{40})$').Groups[1].Value
-              $p=[regex]::Match($msg,'(?m)^workflow=([0-9a-f]{40})$').Groups[1].Value
-              $s=[regex]::Match($msg,'(?m)^status=(success|failure|cancelled)$').Groups[1].Value
-              if($s-eq'success' -and $w-eq$mix -and $f-eq$fill -and $p-eq$flow){$run='false'}
-            }
+          & git -C filling fetch --quiet --force origin refs/tags/pastry-doctor:refs/tags/pastry-doctor 2>$null
+          if($LASTEXITCODE-eq0){
+            $msg=(& git -C filling tag -l pastry-doctor '--format=%(contents)')-join"`n"
+            $m=[regex]::Match($msg,'(?m)^source=([0-9a-f]{40})$').Groups[1].Value
+            $f=[regex]::Match($msg,'(?m)^delivery=([0-9a-f]{40})$').Groups[1].Value
+            $w=[regex]::Match($msg,'(?m)^workflow=([0-9a-f]{40})$').Groups[1].Value
+            $s=[regex]::Match($msg,'(?m)^status=(success|failure|cancelled)$').Groups[1].Value
+            if($s-eq'success' -and $m-eq$mix -and $f-eq$fill -and $w-eq$flow){$run='false'}
           }
-          $checkout=(& git -C filling rev-parse HEAD).Trim().ToLowerInvariant()
-          if($LASTEXITCODE-ne0 -or $checkout-ne$fill){throw 'Doctor Pantry pin moved'}
           "run=$run" >> $env:GITHUB_OUTPUT
           "mix_ref=$mix" >> $env:GITHUB_OUTPUT
           "fill_ref=$fill" >> $env:GITHUB_OUTPUT
           "workflow_ref=$flow" >> $env:GITHUB_OUTPUT
-          Write-Host "[Doctor] run=$run workspace=$($mix.Substring(0,12)) pantry=$($fill.Substring(0,12)) workflow=$($flow.Substring(0,12))"
+          Write-Host "[Doctor] snapshot ready run=$run"
 
-  workspace_python:
-    name: Workspace publisher regressions
+  portable:
+    name: Portable checks
     needs: gate
     if: ${{ needs.gate.outputs.run == 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-          path: recipe
-          fetch-depth: 1
-          persist-credentials: false
-          sparse-checkout: .github/actions/table
-      - uses: ./recipe/.github/actions/table
-        with:
-          mix: ${{ secrets.MIX_REPO }}
-          mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
-          mix_ref: ${{ needs.gate.outputs.mix_ref }}
-          fill: ${{ secrets.FILL_REPO }}
-          fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-          fill_ref: ${{ needs.gate.outputs.fill_ref }}
-      - name: Run regressions
-        shell: bash
+      - name: Dust counter
+        shell: pwsh
         run: |
-          set -euo pipefail
-          cd mix
-          export PYTHONDONTWRITEBYTECODE=1
-          python3 PantryPublisher/test_prepare_runner.py
-          python3 PantryPublisher/test_publish_fast_path.py
-
-  pantry_python:
-    name: Pantry regressions
-    needs: gate
-    if: ${{ needs.gate.outputs.run == 'true' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
+          Write-Host "::add-mask::$env:GITHUB_REPOSITORY"
+          $crumb=$env:GITHUB_REPOSITORY -split '/',2
+          foreach($x in $crumb){if($x){Write-Host "::add-mask::$x"}}
+      - name: Open recipe
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
           path: recipe
           fetch-depth: 1
           persist-credentials: false
+          show-progress: false
           sparse-checkout: .github/actions/table
-      - uses: ./recipe/.github/actions/table
+      - name: Set table
+        uses: ./recipe/.github/actions/table
         with:
           mix: ${{ secrets.MIX_REPO }}
           mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
@@ -145,184 +117,46 @@ jobs:
           fill: ${{ secrets.FILL_REPO }}
           fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
           fill_ref: ${{ needs.gate.outputs.fill_ref }}
-      - name: Run regressions
-        shell: bash
+      - name: Taste
+        shell: pwsh
         run: |
-          set -euo pipefail
-          cd filling
-          export PYTHONDONTWRITEBYTECODE=1
-          python3 -m pip install --disable-pip-version-check --no-input -r tools/requirements-launch.txt
-          python3 tests/test_contract.py
-          python3 tests/test_free_key_contract.py
-          python3 tests/test_consumer_contract.py
-          python3 tests/test_publish_workflow_contract.py
-          python3 tests/test_prepare_snapshot_entrypoint.py
+          $log=Join-Path $env:RUNNER_TEMP 'doctor-portable.log'
+          try {
+            & ./mix/Tools/BakeDoctor.ps1 -Mode Portable -Fill (Join-Path $PWD.Path 'filling') *>&1 | Set-Content -LiteralPath $log
+            if($LASTEXITCODE){throw 'portable rejected'}
+            Write-Host '[Doctor] portable ready'
+          } catch {
+            $crumb=if(Test-Path $log){(Get-FileHash $log -Algorithm SHA256).Hash.ToLowerInvariant().Substring(0,16)}else{'none'}
+            Write-Host "[Doctor] portable rejected crumb=$crumb"
+            exit 1
+          } finally {
+            if(Test-Path $log){Remove-Item $log -Force -ErrorAction SilentlyContinue}
+          }
 
-  node:
-    name: Auth relay regressions
-    needs: gate
-    if: ${{ needs.gate.outputs.run == 'true' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-          path: recipe
-          fetch-depth: 1
-          persist-credentials: false
-          sparse-checkout: .github/actions/table
-      - uses: ./recipe/.github/actions/table
-        with:
-          mix: ${{ secrets.MIX_REPO }}
-          mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
-          mix_ref: ${{ needs.gate.outputs.mix_ref }}
-          fill: ${{ secrets.FILL_REPO }}
-          fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-          fill_ref: ${{ needs.gate.outputs.fill_ref }}
-      - name: Run Node tests
-        working-directory: mix
-        run: node --test AuthRelayWorker/test/*.test.mjs
-
-  cpp_closure:
-    name: C++ closure
+  windows:
+    name: Windows checks
     needs: gate
     if: ${{ needs.gate.outputs.run == 'true' }}
     runs-on: windows-2025
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-          path: recipe
-          fetch-depth: 1
-          persist-credentials: false
-          sparse-checkout: .github/actions/table
-      - uses: ./recipe/.github/actions/table
-        with:
-          mix: ${{ secrets.MIX_REPO }}
-          mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
-          mix_ref: ${{ needs.gate.outputs.mix_ref }}
-          fill: ${{ secrets.FILL_REPO }}
-          fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-          fill_ref: ${{ needs.gate.outputs.fill_ref }}
-      - name: Bind hosted MSVC to managed path
-        shell: pwsh
-        working-directory: mix
-        run: |
-          $vswhere="${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vs=(& $vswhere -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1)
-          if(!$vs){throw 'Hosted MSVC unavailable'}
-          $msbuild=Join-Path $vs 'MSBuild\Current\Bin\MSBuild.exe'
-          if(!(Test-Path -LiteralPath $msbuild -PathType Leaf)){throw "Hosted MSBuild canonical path unavailable: $msbuild"}
-          $managed=[IO.Path]::GetFullPath((Join-Path $PWD.Path '..\kyron-sdk\VisualStudio\BuildTools'))
-          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $managed)|Out-Null
-          if(Test-Path -LiteralPath $managed){throw "Managed hosted path already exists: $managed"}
-          New-Item -ItemType Junction -Path $managed -Target $vs|Out-Null
-          Write-Host '[Doctor] hosted MSVC bound to managed path'
-      - name: Build canonical C++ closure
-        shell: cmd
-        working-directory: mix
-        run: Tools\BuildWorkspaceCppClosure.cmd
-
-  powershell:
-    name: PowerShell / ${{ matrix.check }}
-    needs: gate
-    if: ${{ needs.gate.outputs.run == 'true' }}
-    runs-on: windows-2025
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - check: safety-guard
-            command: '& .\scripts\assert-powershell-safety.ps1 -Root $PWD.Path'
-          - check: safety-regressions
-            command: '& .\scripts\test-powershell-safety.ps1'
-          - check: compiler-signing
-            command: '& .\Compiler\tools\validate-signing-contract.ps1'
-          - check: compiler-signing-runtime
-            command: '& .\Compiler\tools\test-signing-identity.ps1'
-          - check: pantry-signer-acl
-            command: '& .\PantryPublisher\Test-LocalPantrySignerAcl.ps1'
-          - check: pantry-cleanup-selftest
-            command: '& .\PantryPublisher\Clear-PantryGeneratedState.ps1 -SelfTest'
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-          path: recipe
-          fetch-depth: 1
-          persist-credentials: false
-          sparse-checkout: .github/actions/table
-      - uses: ./recipe/.github/actions/table
-        with:
-          mix: ${{ secrets.MIX_REPO }}
-          mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
-          mix_ref: ${{ needs.gate.outputs.mix_ref }}
-          fill: ${{ secrets.FILL_REPO }}
-          fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-          fill_ref: ${{ needs.gate.outputs.fill_ref }}
-      - name: Run check
-        shell: powershell
-        working-directory: mix
-        run: ${{ matrix.command }}
-
-  desktop:
-    name: Desktop / ${{ matrix.target.name }} / ${{ matrix.configuration }}
-    needs: gate
-    if: ${{ needs.gate.outputs.run == 'true' }}
-    runs-on: windows-2025
-    strategy:
-      fail-fast: false
-      matrix:
-        configuration: [Debug, Release]
-        target:
-          - { name: Bootstrap, project: Bootstrap/Bootstrap.vcxproj }
-          - { name: SharedCore, project: Launcher/SharedCore/SharedCore.vcxproj }
-          - { name: Launcher, project: Launcher/Launcher.vcxproj }
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-          path: recipe
-          fetch-depth: 1
-          persist-credentials: false
-          sparse-checkout: .github/actions/table
-      - uses: ./recipe/.github/actions/table
-        with:
-          mix: ${{ secrets.MIX_REPO }}
-          mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
-          mix_ref: ${{ needs.gate.outputs.mix_ref }}
-          fill: ${{ secrets.FILL_REPO }}
-          fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-          fill_ref: ${{ needs.gate.outputs.fill_ref }}
-      - name: Locate MSBuild
-        id: msbuild
+      - name: Dust counter
         shell: pwsh
         run: |
-          $vswhere="${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $msbuild=& $vswhere -latest -prerelease -products * -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
-          if(!$msbuild){throw 'MSBuild not found'}
-          "path=$msbuild" >> $env:GITHUB_OUTPUT
-      - name: Build
-        shell: pwsh
-        working-directory: mix
-        run: '& "${{ steps.msbuild.outputs.path }}" "${{ matrix.target.project }}" /m /nologo /v:minimal /p:Configuration=${{ matrix.configuration }} /p:Platform=x64'
-
-  signer_smoke:
-    name: Signer reuse smoke
-    needs: gate
-    if: ${{ needs.gate.outputs.run == 'true' }}
-    runs-on: windows-2025
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
+          Write-Host "::add-mask::$env:GITHUB_REPOSITORY"
+          $crumb=$env:GITHUB_REPOSITORY -split '/',2
+          foreach($x in $crumb){if($x){Write-Host "::add-mask::$x"}}
+      - name: Open recipe
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
           path: recipe
           fetch-depth: 1
           persist-credentials: false
+          show-progress: false
           sparse-checkout: .github/actions/table
-      - uses: ./recipe/.github/actions/table
+      - name: Set table
+        uses: ./recipe/.github/actions/table
         with:
           mix: ${{ secrets.MIX_REPO }}
           mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
@@ -330,29 +164,28 @@ jobs:
           fill: ${{ secrets.FILL_REPO }}
           fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
           fill_ref: ${{ needs.gate.outputs.fill_ref }}
-      - name: Enroll and reuse identity
+      - name: Taste
         shell: pwsh
-        working-directory: mix
         run: |
-          $header=Join-Path $env:RUNNER_TEMP 'KyronSignerPin.hpp'
-          $fingerprint=Join-Path $env:RUNNER_TEMP 'KyronSignerPin.sha256'
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tools/GenerateSignerPin.ps1 -OutputHeader $header -OutputFingerprint $fingerprint
-          if($LASTEXITCODE){throw "first signer pass failed: $LASTEXITCODE"}
-          $first=(Get-Content -LiteralPath $fingerprint -Raw).Trim()
-          $reuse=(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tools/GenerateSignerPin.ps1 -OutputHeader $header -OutputFingerprint $fingerprint 2>&1 | Out-String)
-          if($LASTEXITCODE){throw "signer reuse failed: $LASTEXITCODE"}
-          if($reuse -match 'CertMgr Succeeded|\[KYRON\]\[SIGN\] trust installed'){throw 'signer reuse mutated trust'}
-          $count=[regex]::Matches($reuse,'\[KYRON\]\[SIGN\] trust already present in LocalMachine\\(?:Root|TrustedPublisher)').Count
-          if($count-ne2){throw "expected two reused trust stores; observed $count"}
-          if((Get-Content -LiteralPath $fingerprint -Raw).Trim()-cne$first){throw 'signer fingerprint changed'}
-
+          $log=Join-Path $env:RUNNER_TEMP 'doctor-windows.log'
+          try {
+            & ./mix/Tools/BakeDoctor.ps1 -Mode Windows -Fill (Join-Path $PWD.Path 'filling') *>&1 | Set-Content -LiteralPath $log
+            if($LASTEXITCODE){throw 'windows rejected'}
+            Write-Host '[Doctor] windows ready'
+          } catch {
+            $crumb=if(Test-Path $log){(Get-FileHash $log -Algorithm SHA256).Hash.ToLowerInvariant().Substring(0,16)}else{'none'}
+            Write-Host "[Doctor] windows rejected crumb=$crumb"
+            exit 1
+          } finally {
+            if(Test-Path $log){Remove-Item $log -Force -ErrorAction SilentlyContinue}
+          }
   mark:
-    name: Record doctor snapshot
-    needs: [gate, workspace_python, pantry_python, node, cpp_closure, powershell, desktop, signer_smoke]
+    name: Record snapshot
+    needs: [gate, portable, windows]
     if: ${{ always() && needs.gate.result == 'success' && needs.gate.outputs.run == 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - name: Open Pantry snapshot
+      - name: Open delivery snapshot
         uses: actions/checkout@v6
         with:
           repository: ${{ secrets.FILL_REPO }}
@@ -366,22 +199,19 @@ jobs:
       - name: Record result
         shell: pwsh
         env:
-          WORKSPACE_RESULT: ${{ needs.workspace_python.result }}
-          PANTRY_RESULT: ${{ needs.pantry_python.result }}
-          NODE_RESULT: ${{ needs.node.result }}
-          CPP_RESULT: ${{ needs.cpp_closure.result }}
-          POWERSHELL_RESULT: ${{ needs.powershell.result }}
-          DESKTOP_RESULT: ${{ needs.desktop.result }}
-          SIGNER_RESULT: ${{ needs.signer_smoke.result }}
+          PORTABLE_RESULT: ${{ needs.portable.result }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
         run: |
-          $results=@($env:WORKSPACE_RESULT,$env:PANTRY_RESULT,$env:NODE_RESULT,$env:CPP_RESULT,$env:POWERSHELL_RESULT,$env:DESKTOP_RESULT,$env:SIGNER_RESULT)
-          $status=if($results-contains'failure'){'failure'}elseif($results-contains'cancelled'){'cancelled'}else{'success'}
-          $mix='${{ needs.gate.outputs.mix_ref }}';$fill='${{ needs.gate.outputs.fill_ref }}';$flow='${{ needs.gate.outputs.workflow_ref }}'
-          $message="schema=1`nworkspace=$mix`npantry=$fill`nworkflow=$flow`nstatus=$status"
+          $results=@($env:PORTABLE_RESULT,$env:WINDOWS_RESULT)
+          $status=if($results-contains'failure'){'failure'}elseif($results-contains'cancelled'){'cancelled'}elseif(@($results|Where-Object{$_ -ne 'success'}).Count){'failure'}else{'success'}
+          $mix='${{ needs.gate.outputs.mix_ref }}'
+          $fill='${{ needs.gate.outputs.fill_ref }}'
+          $flow='${{ needs.gate.outputs.workflow_ref }}'
+          $message="schema=2`nsource=$mix`ndelivery=$fill`nworkflow=$flow`nstatus=$status"
           & git -C filling config user.name pastry-bot
           & git -C filling config user.email pastry-bot@users.noreply.github.com
           & git -C filling tag -a -f pastry-doctor $fill -m $message
-          if($LASTEXITCODE){throw 'Doctor marker creation failed'}
+          if($LASTEXITCODE){throw 'marker creation rejected'}
           & git -C filling push --force origin refs/tags/pastry-doctor
-          if($LASTEXITCODE){throw 'Doctor marker push failed'}
-          Write-Host "[Doctor] recorded status=$status workspace=$($mix.Substring(0,12)) pantry=$($fill.Substring(0,12)) workflow=$($flow.Substring(0,12))"
+          if($LASTEXITCODE){throw 'marker push rejected'}
+          Write-Host "[Doctor] snapshot recorded status=$status"

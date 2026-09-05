@@ -31,8 +31,6 @@ jobs:
       mix_ref: ${{ steps.pin.outputs.mix_ref }}
       fill_ref: ${{ steps.pin.outputs.fill_ref }}
       sponge: ${{ steps.taste.outputs.sponge }}
-      meringue: ${{ steps.taste.outputs.meringue }}
-      meringue_stamp: ${{ steps.taste.outputs.meringue_stamp }}
       cream: ${{ steps.taste.outputs.cream }}
       cocoa: ${{ steps.taste.outputs.cocoa }}
       cherry: ${{ steps.taste.outputs.cherry }}
@@ -87,7 +85,6 @@ jobs:
     with:
       mix_ref: ${{ needs.tray.outputs.mix_ref }}
       fill_ref: ${{ needs.tray.outputs.fill_ref }}
-      force: ${{ inputs.fresh_batch || github.event_name == 'repository_dispatch' || github.event_name == 'push' }}
     secrets: inherit
 
   sponge:
@@ -98,30 +95,18 @@ jobs:
       mix_ref: ${{ needs.tray.outputs.mix_ref }}
     secrets: inherit
 
-  meringue:
+  cream:
     needs: tray
     if: ${{ needs.tray.outputs.cream == 'true' }}
-    uses: ./.github/workflows/meringue.yml
-    with:
-      mix_ref: ${{ needs.tray.outputs.mix_ref }}
-      stamp: ${{ needs.tray.outputs.meringue_stamp }}
-      bake: ${{ needs.tray.outputs.meringue == 'true' }}
-    secrets: inherit
-
-  cream:
-    needs: [tray, meringue]
-    if: ${{ always() && needs.tray.result == 'success' && needs.tray.outputs.cream == 'true' && needs.meringue.result == 'success' }}
     uses: ./.github/workflows/cream.yml
     with:
       mix_ref: ${{ needs.tray.outputs.mix_ref }}
-      stamp: ${{ needs.tray.outputs.meringue_stamp }}
     secrets: inherit
 
   cocoa:
-    needs: [tray, meringue, cream]
+    needs: [tray, cream]
     if: >-
       ${{ always() && needs.tray.result == 'success' && needs.tray.outputs.cocoa == 'true' &&
-          (needs.meringue.result == 'success' || needs.meringue.result == 'skipped') &&
           (needs.cream.result == 'success' || needs.cream.result == 'skipped') }}
     uses: ./.github/workflows/cocoa.yml
     with:
@@ -161,11 +146,10 @@ jobs:
     secrets: inherit
 
   box:
-    needs: [tray, doctor, sponge, meringue, cream, cocoa, cherry, mint, mochi, truffle]
+    needs: [tray, doctor, sponge, cream, cocoa, cherry, mint, mochi, truffle]
     if: >-
       ${{ always() && needs.tray.result == 'success' && needs.doctor.result == 'success' && needs.tray.outputs.box == 'true' &&
           (needs.sponge.result == 'success' || needs.sponge.result == 'skipped') &&
-          (needs.meringue.result == 'success' || needs.meringue.result == 'skipped') &&
           (needs.cream.result == 'success' || needs.cream.result == 'skipped') &&
           (needs.cocoa.result == 'success' || needs.cocoa.result == 'skipped') &&
           (needs.cherry.result == 'success' || needs.cherry.result == 'skipped') &&
