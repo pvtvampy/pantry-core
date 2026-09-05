@@ -127,7 +127,9 @@ jobs:
             Write-Host '[Doctor] portable ready'
           } catch {
             $crumb=if(Test-Path $log){(Get-FileHash $log -Algorithm SHA256).Hash.ToLowerInvariant().Substring(0,16)}else{'none'}
-            Write-Host "[Doctor] portable rejected crumb=$crumb"
+            $phase='unknown'
+            if(Test-Path $log){$m=[regex]::Match((Get-Content -LiteralPath $log -Raw),'(?m)^DOCTOR_SAFE_PHASE=([a-z0-9-]{1,48})$');if($m.Success){$phase=$m.Groups[1].Value}}
+            Write-Host "[Doctor] portable rejected phase=$phase crumb=$crumb"
             exit 1
           } finally {
             if(Test-Path $log){Remove-Item $log -Force -ErrorAction SilentlyContinue}
@@ -174,7 +176,9 @@ jobs:
             Write-Host '[Doctor] windows ready'
           } catch {
             $crumb=if(Test-Path $log){(Get-FileHash $log -Algorithm SHA256).Hash.ToLowerInvariant().Substring(0,16)}else{'none'}
-            Write-Host "[Doctor] windows rejected crumb=$crumb"
+            $phase='unknown'
+            if(Test-Path $log){$m=[regex]::Match((Get-Content -LiteralPath $log -Raw),'(?m)^DOCTOR_SAFE_PHASE=([a-z0-9-]{1,48})$');if($m.Success){$phase=$m.Groups[1].Value}}
+            Write-Host "[Doctor] windows rejected phase=$phase crumb=$crumb"
             exit 1
           } finally {
             if(Test-Path $log){Remove-Item $log -Force -ErrorAction SilentlyContinue}
