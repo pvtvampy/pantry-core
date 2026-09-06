@@ -48,11 +48,10 @@ jobs:
         uses: actions/cache@v6.1.0
         with:
           path: |
-            mix/*/obj
-            mix/*/build
-          key: sponge-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}-${{ github.run_id }}
+            mix/src/windows/Bootstrap/obj
+          key: sponge-v2-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json', 'mix/Tools/BuildWindowsSlice.ps1', 'mix/src/windows/Bootstrap/**', 'mix/src/common/Shared/**') }}-${{ github.run_id }}
           restore-keys: |
-            sponge-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}-
+            sponge-v2-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json', 'mix/Tools/BuildWindowsSlice.ps1', 'mix/src/windows/Bootstrap/**', 'mix/src/common/Shared/**') }}-
 
       - name: Bake
         shell: pwsh
