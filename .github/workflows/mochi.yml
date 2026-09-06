@@ -60,9 +60,9 @@ jobs:
           path: |
             mix/*/obj
             ${{ runner.temp }}/kys-mochi/Cache/BridgeRuntimeLoader
-          key: mochi-v4-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json', 'mix/src/android/Bridge/**', 'mix/src/common/Shared/**', 'mix/Tools/BakeSlice.ps1', 'mix/scripts/ensure-android-toolchain.ps1', 'mix/Tools/ToolchainEnv.cmd') }}-${{ github.run_id }}
+          key: mochi-v5-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json', 'mix/src/android/Bridge/**', 'mix/src/common/Shared/**', 'mix/Tools/BakeSlice.ps1', 'mix/scripts/ensure-android-toolchain.ps1', 'mix/Tools/ToolchainEnv.cmd') }}-${{ github.run_id }}
           restore-keys: |
-            mochi-v4-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json', 'mix/src/android/Bridge/**', 'mix/src/common/Shared/**', 'mix/Tools/BakeSlice.ps1', 'mix/scripts/ensure-android-toolchain.ps1', 'mix/Tools/ToolchainEnv.cmd') }}-
+            mochi-v5-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json', 'mix/src/android/Bridge/**', 'mix/src/common/Shared/**', 'mix/Tools/BakeSlice.ps1', 'mix/scripts/ensure-android-toolchain.ps1', 'mix/Tools/ToolchainEnv.cmd') }}-
 
       - name: Bake
         shell: pwsh
