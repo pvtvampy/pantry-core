@@ -48,8 +48,11 @@ jobs:
       - name: Chill oven
         uses: actions/cache@v6.1.0
         with:
-          path: ${{ steps.table.outputs.ndk_cache_path }}
-          key: oven-android-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}
+          path: |
+            *-sdk/Android
+            *-sdk/Java
+            *-sdk/Smali
+          key: oven-full-v1-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}
 
       - name: Chill crumbs
         uses: actions/cache@v6.1.0

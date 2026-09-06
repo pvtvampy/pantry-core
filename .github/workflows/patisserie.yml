@@ -37,6 +37,7 @@ jobs:
       mint: ${{ steps.taste.outputs.mint }}
       mochi: ${{ steps.taste.outputs.mochi }}
       truffle: ${{ steps.taste.outputs.truffle }}
+      oven: ${{ steps.taste.outputs.oven }}
       box: ${{ steps.taste.outputs.box }}
     steps:
       - name: Dust counter
@@ -79,6 +80,14 @@ jobs:
           & ./mix/Tools/BakeSlice.ps1 @a
           exit $LASTEXITCODE
 
+  oven:
+    needs: tray
+    if: ${{ needs.tray.outputs.oven == 'true' }}
+    uses: ./.github/workflows/oven.yml
+    with:
+      mix_ref: ${{ needs.tray.outputs.mix_ref }}
+    secrets: inherit
+
   doctor:
     needs: tray
     uses: ./.github/workflows/doctor.yml
@@ -104,9 +113,10 @@ jobs:
     secrets: inherit
 
   cocoa:
-    needs: [tray, cream]
+    needs: [tray, oven, cream]
     if: >-
       ${{ always() && needs.tray.result == 'success' && needs.tray.outputs.cocoa == 'true' &&
+          (needs.oven.result == 'success' || needs.oven.result == 'skipped') &&
           (needs.cream.result == 'success' || needs.cream.result == 'skipped') }}
     uses: ./.github/workflows/cocoa.yml
     with:
@@ -115,40 +125,49 @@ jobs:
     secrets: inherit
 
   cherry:
-    needs: tray
-    if: ${{ needs.tray.outputs.cherry == 'true' }}
+    needs: [tray, oven]
+    if: >-
+      ${{ always() && needs.tray.result == 'success' && needs.tray.outputs.cherry == 'true' &&
+          (needs.oven.result == 'success' || needs.oven.result == 'skipped') }}
     uses: ./.github/workflows/cherry.yml
     with:
       mix_ref: ${{ needs.tray.outputs.mix_ref }}
     secrets: inherit
   mint:
-    needs: tray
-    if: ${{ needs.tray.outputs.mint == 'true' }}
+    needs: [tray, oven]
+    if: >-
+      ${{ always() && needs.tray.result == 'success' && needs.tray.outputs.mint == 'true' &&
+          (needs.oven.result == 'success' || needs.oven.result == 'skipped') }}
     uses: ./.github/workflows/mint.yml
     with:
       mix_ref: ${{ needs.tray.outputs.mix_ref }}
     secrets: inherit
 
   mochi:
-    needs: tray
-    if: ${{ needs.tray.outputs.mochi == 'true' }}
+    needs: [tray, oven]
+    if: >-
+      ${{ always() && needs.tray.result == 'success' && needs.tray.outputs.mochi == 'true' &&
+          (needs.oven.result == 'success' || needs.oven.result == 'skipped') }}
     uses: ./.github/workflows/mochi.yml
     with:
       mix_ref: ${{ needs.tray.outputs.mix_ref }}
     secrets: inherit
 
   truffle:
-    needs: tray
-    if: ${{ needs.tray.outputs.truffle == 'true' }}
+    needs: [tray, oven]
+    if: >-
+      ${{ always() && needs.tray.result == 'success' && needs.tray.outputs.truffle == 'true' &&
+          (needs.oven.result == 'success' || needs.oven.result == 'skipped') }}
     uses: ./.github/workflows/truffle.yml
     with:
       mix_ref: ${{ needs.tray.outputs.mix_ref }}
     secrets: inherit
 
   box:
-    needs: [tray, doctor, sponge, cream, cocoa, cherry, mint, mochi, truffle]
+    needs: [tray, doctor, oven, sponge, cream, cocoa, cherry, mint, mochi, truffle]
     if: >-
       ${{ always() && needs.tray.result == 'success' && needs.doctor.result == 'success' && needs.tray.outputs.box == 'true' &&
+          (needs.oven.result == 'success' || needs.oven.result == 'skipped') &&
           (needs.sponge.result == 'success' || needs.sponge.result == 'skipped') &&
           (needs.cream.result == 'success' || needs.cream.result == 'skipped') &&
           (needs.cocoa.result == 'success' || needs.cocoa.result == 'skipped') &&

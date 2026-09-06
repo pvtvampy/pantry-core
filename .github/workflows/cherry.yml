@@ -51,7 +51,7 @@ jobs:
             *-sdk/Android
             *-sdk/Java
             *-sdk/Smali
-          key: cherry-oven-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}
+          key: oven-full-v1-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}
 
       - name: Chill crumbs
         uses: actions/cache@v6.1.0

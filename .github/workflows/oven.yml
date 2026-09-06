@@ -1,4 +1,4 @@
-name: Dark Truffle
+name: Warm Oven
 
 on:
   workflow_call:
@@ -12,12 +12,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: dark-truffle
+  group: warm-oven
   cancel-in-progress: false
 
 jobs:
-  bake:
-    name: Bake truffle
+  warm:
+    name: Warm Android oven
     runs-on: windows-2025
     timeout-minutes: 30
     steps:
@@ -27,6 +27,7 @@ jobs:
           Write-Host "::add-mask::$env:GITHUB_REPOSITORY"
           $crumb=$env:GITHUB_REPOSITORY -split '/',2
           foreach($x in $crumb){if($x){Write-Host "::add-mask::$x"}}
+
       - name: Open recipe
         uses: actions/checkout@v6
         with:
@@ -54,18 +55,8 @@ jobs:
             *-sdk/Smali
           key: oven-full-v1-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}
 
-      - name: Chill crumbs
-        uses: actions/cache@v6.1.0
-        with:
-          path: |
-            mix/*/obj
-            ${{ runner.temp }}/kys-truffle/Cache/NativeBridgeRuntime
-          key: truffle-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}-${{ github.run_id }}
-          restore-keys: |
-            truffle-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}-
-
       - name: Bake
         shell: pwsh
         run: |
-          & ./mix/Tools/BakeSlice.ps1 -Fill (Join-Path $PWD.Path 'filling') -Slice Truffle
+          & ./mix/Tools/BakeSlice.ps1 -Fill (Join-Path $PWD.Path 'filling') -Slice Oven
           exit $LASTEXITCODE
