@@ -54,7 +54,9 @@ jobs:
       - name: Chill crumbs
         uses: actions/cache@v6.1.0
         with:
-          path: mix/*/obj
+          path: |
+            mix/*/obj
+            ${{ runner.temp }}/kys-mochi/Cache/BridgeRuntimeLoader
           key: mochi-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}-${{ github.run_id }}
           restore-keys: |
             mochi-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}-

@@ -59,7 +59,7 @@ jobs:
           path: |
             mix/*/obj
             mix/*/x64
-            sugar-home/Projects/*/Cache
+            ${{ runner.temp }}/kys-cherry/Compiler/Projects/*/Cache
           key: cherry-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}-${{ github.run_id }}
           restore-keys: |
             cherry-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}-

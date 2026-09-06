@@ -54,7 +54,9 @@ jobs:
       - name: Chill crumbs
         uses: actions/cache@v6.1.0
         with:
-          path: mix/*/obj
+          path: |
+            mix/*/obj
+            ${{ runner.temp }}/kys-truffle/Cache/NativeBridgeRuntime
           key: truffle-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}-${{ github.run_id }}
           restore-keys: |
             truffle-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}-
