@@ -60,9 +60,9 @@ jobs:
           path: |
             mix/*/obj
             ${{ runner.temp }}/kys-truffle/Cache/NativeBridgeRuntime
-          key: truffle-v3-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json', 'mix/src/android/NativeBridgeRuntime/**', 'mix/src/common/Shared/**', 'mix/Tools/BakeSlice.ps1', 'mix/scripts/ensure-android-toolchain.ps1', 'mix/Tools/ToolchainEnv.cmd') }}-${{ github.run_id }}
+          key: truffle-v4-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json', 'mix/src/android/NativeBridgeRuntime/**', 'mix/src/common/Shared/**', 'mix/Tools/BakeSlice.ps1', 'mix/scripts/ensure-android-toolchain.ps1', 'mix/Tools/ToolchainEnv.cmd') }}-${{ github.run_id }}
           restore-keys: |
-            truffle-v3-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json', 'mix/src/android/NativeBridgeRuntime/**', 'mix/src/common/Shared/**', 'mix/Tools/BakeSlice.ps1', 'mix/scripts/ensure-android-toolchain.ps1', 'mix/Tools/ToolchainEnv.cmd') }}-
+            truffle-v4-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json', 'mix/src/android/NativeBridgeRuntime/**', 'mix/src/common/Shared/**', 'mix/Tools/BakeSlice.ps1', 'mix/scripts/ensure-android-toolchain.ps1', 'mix/Tools/ToolchainEnv.cmd') }}-
 
       - name: Bake
         shell: pwsh
