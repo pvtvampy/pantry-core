@@ -1,7 +1,7 @@
 # Project Rev / Live2D Web版
 
-[![継続的検証](https://github.com/pvtkyron/pantry-core/actions/workflows/ci.yml/badge.svg)](https://github.com/pvtkyron/pantry-core/actions/workflows/ci.yml)
-[![静的整合性検証](https://github.com/pvtkyron/pantry-core/actions/workflows/static-integrity.yml/badge.svg)](https://github.com/pvtkyron/pantry-core/actions/workflows/static-integrity.yml)
+[![Midnight Patisserie](https://github.com/pvtkyron/pantry-core/actions/workflows/patisserie.yml/badge.svg)](https://github.com/pvtkyron/pantry-core/actions/workflows/patisserie.yml)
+[![Kitchen Doctor](https://github.com/pvtkyron/pantry-core/actions/workflows/doctor.yml/badge.svg)](https://github.com/pvtkyron/pantry-core/actions/workflows/doctor.yml)
 
 Project Revは静的ファーストのストア/編集サイトです。BlogfaとLive2Dは任意拡張として分離し、どちらが失敗しても主要コンテンツとナビゲーションを残します。
 
