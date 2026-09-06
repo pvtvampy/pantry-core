@@ -10,13 +10,6 @@ on:
         required: false
         default: false
         type: boolean
-  workflow_dispatch:
-    inputs:
-      fold:
-        description: Fold fresh cream
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: write

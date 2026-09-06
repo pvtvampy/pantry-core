@@ -80,41 +80,22 @@ jobs:
           & ./mix/Tools/BakeSlice.ps1 @a
           exit $LASTEXITCODE
 
-  sponge:
+  build:
+    name: Build every slice one by one
     needs: tray
-    if: ${{ needs.tray.result == 'success' && needs.tray.outputs.sponge == 'true' }}
-    uses: ./.github/workflows/sponge.yml
-    with:
-      mix_ref: ${{ needs.tray.outputs.mix_ref }}
-    secrets: inherit
-
-  cream:
-    needs: [tray, sponge]
     if: >-
-      ${{ always() && !cancelled() && needs.tray.result == 'success' &&
-          needs.tray.outputs.cream == 'true' &&
-          (needs.sponge.result == 'success' || needs.sponge.result == 'skipped') }}
-    uses: ./.github/workflows/cream.yml
-    with:
-      mix_ref: ${{ needs.tray.outputs.mix_ref }}
-    secrets: inherit
-
-  serial:
-    name: Bake Android slices one by one
-    needs: [tray, sponge, cream]
-    if: >-
-      ${{ always() && !cancelled() && needs.tray.result == 'success' &&
-          (needs.sponge.result == 'success' || needs.sponge.result == 'skipped') &&
-          (needs.cream.result == 'success' || needs.cream.result == 'skipped') &&
-          (needs.tray.outputs.oven == 'true' || needs.tray.outputs.cocoa == 'true' ||
+      ${{ needs.tray.result == 'success' &&
+          (needs.tray.outputs.sponge == 'true' || needs.tray.outputs.cream == 'true' ||
+           needs.tray.outputs.oven == 'true' || needs.tray.outputs.cocoa == 'true' ||
            needs.tray.outputs.cherry == 'true' || needs.tray.outputs.mint == 'true' ||
            needs.tray.outputs.mochi == 'true' || needs.tray.outputs.truffle == 'true') }}
     runs-on: windows-2025
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       KYRON_SERIAL_BUILD: '1'
       KYRON_BUILD_JOBS: '1'
-      KYRON_SLICE_TIMEOUT_SECONDS: '1200'
+      KYRON_SLICE_TIMEOUT_SECONDS: '1500'
+      KYRON_HEARTBEAT_SECONDS: '30'
     steps:
       - name: Dust counter
         shell: pwsh
@@ -140,6 +121,17 @@ jobs:
           fill: ${{ secrets.FILL_REPO }}
           fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
           fill_ref: ${{ needs.tray.outputs.fill_ref }}
+      - name: Chill Windows crumbs
+        if: ${{ needs.tray.outputs.sponge == 'true' || needs.tray.outputs.cream == 'true' }}
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            mix/src/windows/Bootstrap/obj
+            mix/src/windows/Launcher/SharedCore/obj
+            mix/src/windows/Launcher/obj
+          key: serial-windows-v1-${{ runner.os }}-${{ hashFiles('mix/Directory.Build.props', 'mix/Tools/BakeSerial.ps1', 'mix/Tools/BakeSlice.ps1', 'mix/Tools/BuildWindowsSlice.ps1', 'mix/src/windows/Bootstrap/**', 'mix/src/windows/Launcher/**', 'mix/src/common/Shared/**') }}-${{ github.run_id }}
+          restore-keys: |
+            serial-windows-v1-${{ runner.os }}-${{ hashFiles('mix/Directory.Build.props', 'mix/Tools/BakeSerial.ps1', 'mix/Tools/BakeSlice.ps1', 'mix/Tools/BuildWindowsSlice.ps1', 'mix/src/windows/Bootstrap/**', 'mix/src/windows/Launcher/**', 'mix/src/common/Shared/**') }}-
       - name: Chill oven
         if: ${{ needs.tray.outputs.oven == 'true' }}
         uses: actions/cache@v6.1.0
@@ -149,7 +141,7 @@ jobs:
             *-sdk/Java
             *-sdk/Smali
           key: oven-full-v3-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json', 'mix/scripts/android-bootstrap.ps1', 'mix/scripts/ensure-android-toolchain.ps1', 'mix/scripts/repair-android-toolchain.ps1', 'mix/scripts/repair-pinned-ndk.ps1', 'mix/scripts/workspace-common.ps1') }}
-      - name: Chill serial crumbs
+      - name: Chill Android crumbs
         if: ${{ needs.tray.outputs.cocoa == 'true' || needs.tray.outputs.cherry == 'true' || needs.tray.outputs.mint == 'true' || needs.tray.outputs.mochi == 'true' || needs.tray.outputs.truffle == 'true' }}
         uses: actions/cache@v6.1.0
         with:
@@ -161,10 +153,10 @@ jobs:
             ${{ runner.temp }}/kys-mochi/Cache/BridgeRuntimeLoader
             ${{ runner.temp }}/kys-truffle/Cache/NativeBridgeRuntime
             ${{ runner.temp }}/kys-cherry/Compiler/Projects/*/Cache
-          key: serial-sources-v3-${{ runner.os }}-${{ hashFiles('mix/Tools/BakeSerial.ps1', 'mix/Tools/BakeSlice.ps1', 'mix/src/android/Bridge/**', 'mix/src/android/NativeBridgeRuntime/**', 'mix/src/android/Compiler/**', 'mix/src/android/Supervisor/**', 'mix/src/android/VeraInternal/**') }}-${{ github.run_id }}
+          key: serial-sources-v4-${{ runner.os }}-${{ hashFiles('mix/Tools/BakeSerial.ps1', 'mix/Tools/BakeSlice.ps1', 'mix/src/android/Bridge/**', 'mix/src/android/NativeBridgeRuntime/**', 'mix/src/android/Compiler/**', 'mix/src/android/Supervisor/**', 'mix/src/android/VeraInternal/**') }}-${{ github.run_id }}
           restore-keys: |
-            serial-sources-v3-${{ runner.os }}-${{ hashFiles('mix/Tools/BakeSerial.ps1', 'mix/Tools/BakeSlice.ps1', 'mix/src/android/Bridge/**', 'mix/src/android/NativeBridgeRuntime/**', 'mix/src/android/Compiler/**', 'mix/src/android/Supervisor/**', 'mix/src/android/VeraInternal/**') }}-
-      - name: Bake Android one by one
+            serial-sources-v4-${{ runner.os }}-${{ hashFiles('mix/Tools/BakeSerial.ps1', 'mix/Tools/BakeSlice.ps1', 'mix/src/android/Bridge/**', 'mix/src/android/NativeBridgeRuntime/**', 'mix/src/android/Compiler/**', 'mix/src/android/Supervisor/**', 'mix/src/android/VeraInternal/**') }}-
+      - name: Build one by one
         shell: pwsh
         env:
           CREAM_A: ${{ secrets[vars.CREAM_A_NAME] }}
@@ -175,23 +167,23 @@ jobs:
           PIN: ${{ secrets[vars.PIN_NAME] }}
         run: |
           $s=@()
+          if('${{ needs.tray.outputs.sponge }}'-eq'true'){$s+='Sponge'}
+          if('${{ needs.tray.outputs.cream }}'-eq'true'){$s+='Meringue';$s+='Cream'}
           if('${{ needs.tray.outputs.oven }}'-eq'true'){$s+='Oven'}
           if('${{ needs.tray.outputs.cocoa }}'-eq'true'){$s+='Cocoa'}
           if('${{ needs.tray.outputs.cherry }}'-eq'true'){$s+='Cherry'}
           if('${{ needs.tray.outputs.mint }}'-eq'true'){$s+='Mint'}
           if('${{ needs.tray.outputs.mochi }}'-eq'true'){$s+='Mochi'}
           if('${{ needs.tray.outputs.truffle }}'-eq'true'){$s+='Truffle'}
-          $a=@{Fill=(Join-Path $PWD.Path 'filling');Slices=$s;Batch=[long]'${{ github.run_id }}';Try=[int]'${{ github.run_attempt }}';SliceTimeoutSeconds=[int]$env:KYRON_SLICE_TIMEOUT_SECONDS}
+          $a=@{Fill=(Join-Path $PWD.Path 'filling');Slices=$s;Batch=[long]'${{ github.run_id }}';Try=[int]'${{ github.run_attempt }}';SliceTimeoutSeconds=[int]$env:KYRON_SLICE_TIMEOUT_SECONDS;HeartbeatSeconds=[int]$env:KYRON_HEARTBEAT_SECONDS}
           & ./mix/Tools/BakeSerial.ps1 @a
           exit $LASTEXITCODE
 
   doctor:
-    needs: [tray, sponge, cream, serial]
+    needs: [tray, build]
     if: >-
       ${{ always() && !cancelled() && needs.tray.result == 'success' &&
-          (needs.sponge.result == 'success' || needs.sponge.result == 'skipped') &&
-          (needs.cream.result == 'success' || needs.cream.result == 'skipped') &&
-          (needs.serial.result == 'success' || needs.serial.result == 'skipped') }}
+          (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     uses: ./.github/workflows/doctor.yml
     with:
       mix_ref: ${{ needs.tray.outputs.mix_ref }}
@@ -208,13 +200,11 @@ jobs:
     secrets: inherit
 
   box:
-    needs: [tray, sponge, cream, serial, doctor, headless]
+    needs: [tray, build, doctor, headless]
     if: >-
       ${{ always() && !cancelled() && needs.tray.result == 'success' && needs.doctor.result == 'success' &&
           needs.tray.outputs.box == 'true' &&
-          (needs.sponge.result == 'success' || needs.sponge.result == 'skipped') &&
-          (needs.cream.result == 'success' || needs.cream.result == 'skipped') &&
-          (needs.serial.result == 'success' || needs.serial.result == 'skipped') &&
+          (needs.build.result == 'success' || needs.build.result == 'skipped') &&
           needs.headless.result == 'success' }}
     permissions:
       contents: write

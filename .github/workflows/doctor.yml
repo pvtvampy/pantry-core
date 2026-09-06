@@ -9,18 +9,6 @@ on:
       fill_ref:
         required: true
         type: string
-  workflow_dispatch:
-    inputs:
-      mix_ref:
-        description: Source ref
-        required: false
-        default: main
-        type: string
-      fill_ref:
-        description: Delivery ref
-        required: false
-        default: main
-        type: string
 
 permissions:
   contents: read
