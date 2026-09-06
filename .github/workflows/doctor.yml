@@ -1,4 +1,4 @@
-name: Kitchen Doctor
+name: Pantry Source Validation
 
 on:
   workflow_call:

@@ -1,4 +1,4 @@
-name: Headless Core
+name: Pantry Runtime Smoke
 
 on:
   workflow_call:

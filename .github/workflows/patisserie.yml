@@ -1,4 +1,4 @@
-name: Midnight Patisserie
+name: Kyron Source Pipeline
 
 on:
   workflow_dispatch:
@@ -10,17 +10,27 @@ on:
         type: boolean
   repository_dispatch:
     types: [fresh-batch]
+  schedule:
+    - cron: '7,37 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patisserie.yml'
+      - '.github/workflows/doctor.yml'
+      - '.github/workflows/headless.yml'
+      - '.github/workflows/box.yml'
+      - '.github/actions/table/**'
 
 permissions:
   contents: read
 
 concurrency:
-  group: midnight-patisserie-main
-  cancel-in-progress: true
+  group: kyron-source-pipeline-main
+  cancel-in-progress: false
 
 jobs:
   tray:
-    name: Weigh tray
+    name: Pin private sources
     runs-on: ubuntu-24.04
     outputs:
       mix_ref: ${{ steps.pin.outputs.mix_ref }}
@@ -57,6 +67,16 @@ jobs:
           mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
           fill: ${{ secrets.FILL_REPO }}
           fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
+      - name: Enforce Core-only Actions ownership
+        shell: pwsh
+        run: |
+          $bad=@()
+          foreach($root in @('mix','filling')){
+            $dir=Join-Path $PWD.Path "$root/.github/workflows"
+            if(Test-Path -LiteralPath $dir -PathType Container){$bad+=@(Get-ChildItem -LiteralPath $dir -File|Where-Object{$_.Extension -in '.yml','.yaml'})}
+          }
+          if($bad.Count){throw 'Private source GitHub Actions ownership rejected; pantry-core is the only Actions owner'}
+          Write-Host '[SOURCE][OWNERSHIP][OK] private sources are workflow-free; pantry-core owns Actions'
       - name: Pin tray
         id: pin
         shell: pwsh
@@ -71,12 +91,12 @@ jobs:
         shell: pwsh
         run: |
           $a=@{Fill=(Join-Path $PWD.Path 'filling');Slice='Probe'}
-          if('${{ inputs.fresh_batch }}'-eq'true' -or '${{ github.event_name }}'-eq'repository_dispatch'){$a.Fresh=$true}
+          if('${{ inputs.fresh_batch }}'-eq'true' -or '${{ github.event_name }}'-eq'repository_dispatch' -or '${{ github.event_name }}'-eq'push'){$a.Fresh=$true}
           & ./mix/Tools/BakeSlice.ps1 @a
           exit $LASTEXITCODE
 
   build:
-    name: Build every slice one by one
+    name: Build changed Workspace sources
     needs: tray
     if: >-
       ${{ needs.tray.result == 'success' &&
@@ -85,12 +105,12 @@ jobs:
            needs.tray.outputs.cherry == 'true' || needs.tray.outputs.mint == 'true' ||
            needs.tray.outputs.mochi == 'true' || needs.tray.outputs.truffle == 'true') }}
     runs-on: windows-2025
-    timeout-minutes: 120
+    timeout-minutes: 360
     env:
       KYRON_SERIAL_BUILD: '1'
       KYRON_BUILD_JOBS: '2'
-      KYRON_MSBUILD_TIMEOUT_SECONDS: '600'
-      KYRON_SLICE_TIMEOUT_SECONDS: '1200'
+      KYRON_MSBUILD_TIMEOUT_SECONDS: '1200'
+      KYRON_SLICE_TIMEOUT_SECONDS: '3600'
       KYRON_HEARTBEAT_SECONDS: '30'
     steps:
       - name: Dust counter
@@ -126,7 +146,7 @@ jobs:
             *-sdk/Java
             *-sdk/Smali
           key: oven-full-v4-${{ runner.os }}
-      - name: Build one by one
+      - name: Build changed slices serially
         shell: pwsh
         env:
           CREAM_A: ${{ secrets[vars.CREAM_A_NAME] }}

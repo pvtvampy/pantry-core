@@ -1,4 +1,4 @@
-name: Night Box
+name: Pantry Prepare + Publish
 
 on:
   workflow_call:
@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   pack:
-    name: Pack box
+    name: Prepare and publish Pantry snapshot
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
