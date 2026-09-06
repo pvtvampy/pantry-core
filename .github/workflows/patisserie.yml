@@ -112,6 +112,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 90
     env:
+      KYRON_SERIAL_BUILD: '1'
       KYRON_BUILD_JOBS: '1'
       KYRON_SLICE_TIMEOUT_SECONDS: '1200'
     steps:
