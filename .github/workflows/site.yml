@@ -1,0 +1,57 @@
+name: Project Rev Site
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'kyron/**'
+      - '.github/workflows/patisserie.yml'
+      - '.github/workflows/box.yml'
+      - '.github/workflows/doctor.yml'
+      - '.github/workflows/headless.yml'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'kyron/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-rev-site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify Live2D + Blogfa
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Build production
+        run: npm run build:prod
+      - name: Delivery contract
+        run: npm run check:delivery
+      - name: Live2D runtime
+        run: npm run check:runtime
+      - name: Static site
+        run: npm run check:static
+      - name: Japanese localization
+        run: npm run check:ja
+      - name: Blogfa integration
+        run: npm run check:blogfa
+      - name: Typography
+        run: npm run check:type
+      - name: VNext contract
+        run: npm run check:vnext
+      - name: Editorial contract
+        run: npm run check:editorial

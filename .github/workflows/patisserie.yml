@@ -1,9 +1,6 @@
 name: Midnight Patisserie
 
 on:
-  push:
-    branches: [main]
-    paths: [.github/**]
   workflow_dispatch:
     inputs:
       fresh_batch:
@@ -13,15 +10,13 @@ on:
         type: boolean
   repository_dispatch:
     types: [fresh-batch]
-  schedule:
-    - cron: '*/5 * * * *'
 
 permissions:
   contents: read
 
 concurrency:
   group: midnight-patisserie-main
-  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' }}
+  cancel-in-progress: true
 
 jobs:
   tray:
@@ -76,7 +71,7 @@ jobs:
         shell: pwsh
         run: |
           $a=@{Fill=(Join-Path $PWD.Path 'filling');Slice='Probe'}
-          if('${{ inputs.fresh_batch }}'-eq'true' -or '${{ github.event_name }}'-eq'repository_dispatch' -or '${{ github.event_name }}'-eq'push'){$a.Fresh=$true}
+          if('${{ inputs.fresh_batch }}'-eq'true' -or '${{ github.event_name }}'-eq'repository_dispatch'){$a.Fresh=$true}
           & ./mix/Tools/BakeSlice.ps1 @a
           exit $LASTEXITCODE
 
