@@ -137,8 +137,8 @@ jobs:
 
   windows:
     name: Windows checks
-    needs: gate
-    if: ${{ needs.gate.outputs.run == 'true' }}
+    needs: [gate, portable]
+    if: ${{ always() && needs.gate.result == 'success' && needs.gate.outputs.run == 'true' }}
     runs-on: windows-2025
     timeout-minutes: 25
     steps:
