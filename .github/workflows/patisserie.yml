@@ -25,7 +25,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: kyron-source-pipeline-main-v2
+  group: kyron-source-pipeline-main-v3
   cancel-in-progress: false
 
 jobs:
