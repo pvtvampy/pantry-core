@@ -60,9 +60,9 @@ jobs:
           path: |
             mix/*/obj
             ${{ runner.temp }}/kys-truffle/Cache/NativeBridgeRuntime
-          key: truffle-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}-${{ github.run_id }}
+          key: truffle-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json', 'mix/src/android/NativeBridgeRuntime/**', 'mix/src/common/Shared/**', 'mix/Tools/BakeSlice.ps1', 'mix/scripts/ensure-android-toolchain.ps1', 'mix/Tools/ToolchainEnv.cmd') }}-${{ github.run_id }}
           restore-keys: |
-            truffle-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}-
+            truffle-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json', 'mix/src/android/NativeBridgeRuntime/**', 'mix/src/common/Shared/**', 'mix/Tools/BakeSlice.ps1', 'mix/scripts/ensure-android-toolchain.ps1', 'mix/Tools/ToolchainEnv.cmd') }}-
 
       - name: Bake
         shell: pwsh
