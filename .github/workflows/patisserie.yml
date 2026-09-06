@@ -93,7 +93,7 @@ jobs:
     timeout-minutes: 120
     env:
       KYRON_SERIAL_BUILD: '1'
-      KYRON_BUILD_JOBS: '1'
+      KYRON_BUILD_JOBS: '2'
       KYRON_SLICE_TIMEOUT_SECONDS: '1500'
       KYRON_HEARTBEAT_SECONDS: '30'
     steps:
@@ -175,7 +175,7 @@ jobs:
           if('${{ needs.tray.outputs.mint }}'-eq'true'){$s+='Mint'}
           if('${{ needs.tray.outputs.mochi }}'-eq'true'){$s+='Mochi'}
           if('${{ needs.tray.outputs.truffle }}'-eq'true'){$s+='Truffle'}
-          $a=@{Fill=(Join-Path $PWD.Path 'filling');Slices=$s;Batch=[long]'${{ github.run_id }}';Try=[int]'${{ github.run_attempt }}';SliceTimeoutSeconds=[int]$env:KYRON_SLICE_TIMEOUT_SECONDS;HeartbeatSeconds=[int]$env:KYRON_HEARTBEAT_SECONDS}
+          $a=@{Fill=(Join-Path $PWD.Path 'filling');Slices=$s;Batch=[long]'${{ github.run_id }}';Try=[int]'${{ github.run_attempt }}';SliceTimeoutSeconds=[int]$env:KYRON_SLICE_TIMEOUT_SECONDS;HeartbeatSeconds=[int]$env:KYRON_HEARTBEAT_SECONDS;CompileJobs=[int]$env:KYRON_BUILD_JOBS}
           & ./mix/Tools/BakeSerial.ps1 @a
           exit $LASTEXITCODE
 
