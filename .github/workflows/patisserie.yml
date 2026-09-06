@@ -101,6 +101,7 @@ jobs:
     timeout-minutes: 90
     env:
       KYRON_BUILD_JOBS: '4'
+      KYRON_SLICE_TIMEOUT_SECONDS: '1200'
     steps:
       - name: Dust counter
         shell: pwsh
@@ -169,7 +170,7 @@ jobs:
           if('${{ needs.tray.outputs.mint }}'-eq'true'){$s+='Mint'}
           if('${{ needs.tray.outputs.mochi }}'-eq'true'){$s+='Mochi'}
           if('${{ needs.tray.outputs.truffle }}'-eq'true'){$s+='Truffle'}
-          $a=@{Fill=(Join-Path $PWD.Path 'filling');Slices=$s;Batch=[long]'${{ github.run_id }}';Try=[int]'${{ github.run_attempt }}'}
+          $a=@{Fill=(Join-Path $PWD.Path 'filling');Slices=$s;Batch=[long]'${{ github.run_id }}';Try=[int]'${{ github.run_attempt }}';SliceTimeoutSeconds=[int]$env:KYRON_SLICE_TIMEOUT_SECONDS}
           if('${{ needs.tray.outputs.cream }}'-eq'true'){$a.Fold=$true}
           & ./mix/Tools/BakeSerial.ps1 @a
           exit $LASTEXITCODE
