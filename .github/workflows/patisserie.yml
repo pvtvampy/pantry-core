@@ -30,7 +30,6 @@ concurrency:
 
 jobs:
   tray:
-    if: ${{ false }}
     name: Pin private sources
     runs-on: ubuntu-24.04
     outputs:
