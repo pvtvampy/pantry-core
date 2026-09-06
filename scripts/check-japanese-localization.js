@@ -2,13 +2,14 @@ const fs=require('fs');
 const path=require('path');
 
 const root=path.resolve(__dirname,'..');
+const workflowFiles=fs.readdirSync(path.join(root,'.github','workflows'),{withFileTypes:true}).filter(x=>x.isFile()&&/\.ya?ml$/i.test(x.name)).map(x=>'.github/workflows/'+x.name).sort();
 const files=[
   'index.html','shop.html','journal.html','about.html','faq.html','404.html','sitemap.html','site.webmanifest','waifu-tips.json',
   'products/rev-core.html','products/rev-studio.html','products/rev-toolkit.html','products/rev-vault.html','products/rev-priority.html','products/rev-bundle.html',
   'posts/buyer-guide.html','posts/github-first.html','posts/project-rev-standard.html','posts/pubg-player-market-guide.html',
   'assets/store.js','assets/blogfa-bootstrap.js','assets/blogfa-supervisor.js','assets/blogfa-widget.js','assets/blogfa-widget-v2.js','assets/blogfa-widget-v3.js','assets/blogfa-live2d-addon.js',
   'blogfa-bootstrap-template.html','blogfa-final-template.html','blogfa-custom-html-snippet.html',
-  'README.md','CONTRIBUTING.md','SECURITY.md','.github/pull_request_template.md','.github/workflows/patisserie.yml','.github/workflows/sponge.yml','.github/workflows/cream.yml','.github/workflows/cocoa.yml','.github/workflows/cherry.yml','.github/workflows/mint.yml','.github/workflows/mochi.yml','.github/workflows/truffle.yml','.github/workflows/box.yml',
+  'README.md','CONTRIBUTING.md','SECURITY.md','.github/pull_request_template.md',...workflowFiles,
   'docs/ARCHITECTURE.md','docs/BLOGFA_RUNTIME.md','docs/DEPLOYMENT.md','docs/LIVE2D_MAINTENANCE.md','docs/TROUBLESHOOTING.md'
 ];
 
