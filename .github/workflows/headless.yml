@@ -1,9 +1,6 @@
 name: Headless Core
 
 on:
-  push:
-    paths:
-      - .github/workflows/headless.yml
   workflow_call:
     inputs:
       mix_ref:
@@ -35,14 +32,12 @@ concurrency:
 
 jobs:
   test:
-    name: Headless / ${{ matrix.configuration }} / ${{ matrix.platform }}
+    name: Headless serial checks
     runs-on: windows-2025
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        configuration: [Debug, Release]
-        platform: [x64, Win32]
+    timeout-minutes: 30
+    env:
+      KYRON_SERIAL_BUILD: '1'
+      KYRON_BUILD_JOBS: '1'
     steps:
       - name: Open recipe
         uses: actions/checkout@v6
@@ -62,8 +57,18 @@ jobs:
           fill: ${{ secrets.FILL_REPO }}
           fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
           fill_ref: ${{ inputs.fill_ref || 'main' }}
-      - name: Run headless suite
+      - name: Run headless suite one by one
         shell: powershell
         working-directory: mix
         run: |
-          & .\Tools\Test-KyronHeadless.ps1 -Suite All -Configuration '${{ matrix.configuration }}' -Platform '${{ matrix.platform }}'
+          $targets=@(
+            @{Configuration='Debug';Platform='x64'},
+            @{Configuration='Debug';Platform='Win32'},
+            @{Configuration='Release';Platform='x64'},
+            @{Configuration='Release';Platform='Win32'}
+          )
+          foreach($target in $targets){
+            Write-Host ("[HEADLESS][SERIAL] configuration={0} platform={1}" -f $target.Configuration,$target.Platform)
+            & .\Tools\Test-KyronHeadless.ps1 -Suite All -Configuration $target.Configuration -Platform $target.Platform
+            if($LASTEXITCODE){exit $LASTEXITCODE}
+          }

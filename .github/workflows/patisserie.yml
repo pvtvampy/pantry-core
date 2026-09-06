@@ -198,14 +198,24 @@ jobs:
       fill_ref: ${{ needs.tray.outputs.fill_ref }}
     secrets: inherit
 
+  headless:
+    needs: [tray, doctor]
+    if: ${{ always() && !cancelled() && needs.tray.result == 'success' && needs.doctor.result == 'success' }}
+    uses: ./.github/workflows/headless.yml
+    with:
+      mix_ref: ${{ needs.tray.outputs.mix_ref }}
+      fill_ref: ${{ needs.tray.outputs.fill_ref }}
+    secrets: inherit
+
   box:
-    needs: [tray, sponge, cream, serial, doctor]
+    needs: [tray, sponge, cream, serial, doctor, headless]
     if: >-
       ${{ always() && !cancelled() && needs.tray.result == 'success' && needs.doctor.result == 'success' &&
           needs.tray.outputs.box == 'true' &&
           (needs.sponge.result == 'success' || needs.sponge.result == 'skipped') &&
           (needs.cream.result == 'success' || needs.cream.result == 'skipped') &&
-          (needs.serial.result == 'success' || needs.serial.result == 'skipped') }}
+          (needs.serial.result == 'success' || needs.serial.result == 'skipped') &&
+          needs.headless.result == 'success' }}
     permissions:
       contents: write
     uses: ./.github/workflows/box.yml
