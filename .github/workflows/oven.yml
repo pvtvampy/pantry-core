@@ -59,7 +59,7 @@ jobs:
             *-sdk/Android
             *-sdk/Java
             *-sdk/Smali
-          key: oven-full-v2-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json') }}
+          key: oven-full-v3-${{ runner.os }}-${{ hashFiles('mix/toolchains.lock.json', 'mix/scripts/android-bootstrap.ps1', 'mix/scripts/ensure-android-toolchain.ps1', 'mix/scripts/repair-android-toolchain.ps1', 'mix/scripts/repair-pinned-ndk.ps1', 'mix/scripts/workspace-common.ps1') }}
 
       - name: Bake
         shell: pwsh
