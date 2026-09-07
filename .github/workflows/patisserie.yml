@@ -31,7 +31,7 @@ permissions:
 
 concurrency:
   group: kyron-source-pipeline-main
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   # Sole GitHub Actions owner: private source repositories stay workflow-free.
