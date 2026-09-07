@@ -8,6 +8,11 @@ on:
         required: false
         default: false
         type: boolean
+      bootstrap_rotation:
+        description: Allow intentional Bootstrap publication
+        required: false
+        default: false
+        type: boolean
   repository_dispatch:
     types: [fresh-batch]
   schedule:
@@ -119,7 +124,7 @@ jobs:
         shell: pwsh
         run: |
           $a=@{Fill=(Join-Path $PWD.Path 'filling');Slice='Probe'}
-          if('${{ inputs.fresh_batch }}'-eq'true' -or '${{ github.event_name }}'-eq'repository_dispatch' -or '${{ github.event_name }}'-eq'push'){$a.Fresh=$true}
+          if('${{ inputs.fresh_batch }}'-eq'true'){$a.Fresh=$true}
           & ./mix/Tools/BakeSlice.ps1 @a
           exit $LASTEXITCODE
 
@@ -190,6 +195,7 @@ jobs:
       KYRON_MSBUILD_TIMEOUT_SECONDS: '1200'
       KYRON_SLICE_TIMEOUT_SECONDS: '3600'
       KYRON_HEARTBEAT_SECONDS: '30'
+      KYRON_BOOTSTRAP_ROTATION: '1'
     steps:
       - name: Dust counter
         shell: pwsh
@@ -197,6 +203,7 @@ jobs:
           Write-Host "::add-mask::$env:GITHUB_REPOSITORY"
           $crumb=$env:GITHUB_REPOSITORY -split '/',2
           foreach($x in $crumb){if($x){Write-Host "::add-mask::$x"}}
+
       - name: Open recipe
         uses: actions/checkout@v6
         with:
