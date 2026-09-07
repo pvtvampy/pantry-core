@@ -189,6 +189,8 @@ jobs:
            needs.tray.outputs.mochi == 'true' || needs.tray.outputs.truffle == 'true') }}
     runs-on: windows-2025
     timeout-minutes: 360
+    outputs:
+      fill_ref: ${{ steps.delivery.outputs.fill_ref }}
     env:
       KYRON_SERIAL_BUILD: '1'
       KYRON_BUILD_JOBS: '2'
@@ -203,6 +205,7 @@ jobs:
           Write-Host "::add-mask::$env:GITHUB_REPOSITORY"
           $crumb=$env:GITHUB_REPOSITORY -split '/',2
           foreach($x in $crumb){if($x){Write-Host "::add-mask::$x"}}
+
 
       - name: Open recipe
         uses: actions/checkout@v6
@@ -253,6 +256,18 @@ jobs:
           $a=@{Fill=(Join-Path $PWD.Path 'filling');Slices=$s;Batch=[long]'${{ github.run_id }}';Try=[int]'${{ github.run_attempt }}';SliceTimeoutSeconds=[int]$env:KYRON_SLICE_TIMEOUT_SECONDS;HeartbeatSeconds=[int]$env:KYRON_HEARTBEAT_SECONDS;CompileJobs=[int]$env:KYRON_BUILD_JOBS}
           & ./mix/Tools/BakeSerial.ps1 @a
           exit $LASTEXITCODE
+      - name: Pin built Pantry delivery
+        id: delivery
+        shell: pwsh
+        run: |
+          $old=$ErrorActionPreference
+          try{$ErrorActionPreference='Continue';& git -C filling fetch --quiet --prune origin main 1>$null 2>$null;$rc=$LASTEXITCODE}
+          finally{$ErrorActionPreference=$old}
+          if($rc){throw 'Pantry final pin fetch rejected'}
+          $fill=(& git -C filling rev-parse refs/remotes/origin/main 2>$null).Trim().ToLowerInvariant()
+          if($LASTEXITCODE-ne0-or$fill-notmatch'^[0-9a-f]{40}$'){throw 'Pantry final pin rejected'}
+          "fill_ref=$fill" >> $env:GITHUB_OUTPUT
+          Write-Host '[Patisserie][DELIVERY/PIN][OK]'
 
   doctor:
     needs: [tray, build, sensevity, cdn]
@@ -263,16 +278,16 @@ jobs:
     uses: ./.github/workflows/doctor.yml
     with:
       mix_ref: ${{ needs.tray.outputs.mix_ref }}
-      fill_ref: ${{ needs.tray.outputs.fill_ref }}
+      fill_ref: ${{ needs.build.outputs.fill_ref || needs.tray.outputs.fill_ref }}
     secrets: inherit
 
   headless:
-    needs: [tray, doctor]
+    needs: [tray, build, doctor]
     if: ${{ always() && !cancelled() && needs.tray.result == 'success' && needs.doctor.result == 'success' }}
     uses: ./.github/workflows/headless.yml
     with:
       mix_ref: ${{ needs.tray.outputs.mix_ref }}
-      fill_ref: ${{ needs.tray.outputs.fill_ref }}
+      fill_ref: ${{ needs.build.outputs.fill_ref || needs.tray.outputs.fill_ref }}
     secrets: inherit
 
   box:
@@ -287,5 +302,6 @@ jobs:
     uses: ./.github/workflows/box.yml
     with:
       mix_ref: ${{ needs.tray.outputs.mix_ref }}
+      fill_ref: ${{ needs.build.outputs.fill_ref || needs.tray.outputs.fill_ref }}
       fold: ${{ needs.tray.outputs.cream == 'true' && needs.tray.outputs.cocoa != 'true' }}
     secrets: inherit

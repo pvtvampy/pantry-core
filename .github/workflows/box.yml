@@ -6,6 +6,10 @@ on:
       mix_ref:
         required: true
         type: string
+      fill_ref:
+        required: false
+        default: main
+        type: string
       fold:
         required: false
         default: false
@@ -47,6 +51,7 @@ jobs:
           mix_ref: ${{ inputs.mix_ref || 'main' }}
           fill: ${{ secrets.FILL_REPO }}
           fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
+          fill_ref: ${{ inputs.fill_ref || 'main' }}
           shelf: 'true'
           shelf_ref: ${{ github.sha }}
       - name: Chill flour
