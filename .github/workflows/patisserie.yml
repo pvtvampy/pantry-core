@@ -3,11 +3,6 @@ name: Kyron Source Pipeline
 on:
   workflow_dispatch:
     inputs:
-      fresh_batch:
-        description: Fresh batch
-        required: false
-        default: false
-        type: boolean
       bootstrap_rotation:
         description: Intentionally rebuild and publish Bootstrap
         required: false
@@ -76,6 +71,12 @@ jobs:
           mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
           fill: ${{ secrets.FILL_REPO }}
           fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
+      - name: Verify SrcVersion consumer contract
+        shell: pwsh
+        run: |
+          python3 ./filling/tools/sync_consumer_contract.py --config ./filling/SrcVersion.ini --output ./mix/src/common/Shared/pantry_contract.hpp --check
+          if($LASTEXITCODE){throw 'SrcVersion consumer contract rejected'}
+          Write-Host '[SOURCE][VERSION][OK] SrcVersion.ini owns the generated Workspace contract'
       - name: Open SDK source
         uses: actions/checkout@v6
         with:
@@ -121,12 +122,11 @@ jobs:
           "sense_ref=$sense" >> $env:GITHUB_OUTPUT
           "cdn_ref=$cdn" >> $env:GITHUB_OUTPUT
           Write-Host "[Patisserie][PIN] mix=$mix fill=$fill sense=$sense cdn=$cdn"
-      - name: Taste tray
+      - name: Taste full source tray
         id: taste
         shell: pwsh
         run: |
-          $a=@{Fill=(Join-Path $PWD.Path 'filling');Slice='Probe'}
-          if('${{ inputs.fresh_batch }}'-eq'true'){$a.Fresh=$true}
+          $a=@{Fill=(Join-Path $PWD.Path 'filling');Slice='Probe';Fresh=$true}
           & ./mix/Tools/BakeSlice.ps1 @a
           exit $LASTEXITCODE
 
@@ -180,15 +180,11 @@ jobs:
         run: |
           npm install --global wrangler@4.127.1
           wrangler deploy --config worker/wrangler.jsonc --dry-run
+
   build:
-    name: Build changed Workspace sources
+    name: Build complete Workspace sources
     needs: tray
-    if: >-
-      ${{ needs.tray.result == 'success' &&
-          (needs.tray.outputs.sponge == 'true' || needs.tray.outputs.cream == 'true' ||
-           needs.tray.outputs.oven == 'true' || needs.tray.outputs.cocoa == 'true' ||
-           needs.tray.outputs.cherry == 'true' || needs.tray.outputs.mint == 'true' ||
-           needs.tray.outputs.mochi == 'true' || needs.tray.outputs.truffle == 'true') }}
+    if: ${{ needs.tray.result == 'success' }}
     runs-on: windows-2025
     timeout-minutes: 360
     outputs:
@@ -210,7 +206,6 @@ jobs:
           $crumb=$env:GITHUB_REPOSITORY -split '/',2
           foreach($x in $crumb){if($x){Write-Host "::add-mask::$x"}}
 
-
       - name: Open recipe
         uses: actions/checkout@v6
         with:
@@ -230,7 +225,6 @@ jobs:
           fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
           fill_ref: ${{ needs.tray.outputs.fill_ref }}
       - name: Chill oven
-        if: ${{ needs.tray.outputs.oven == 'true' }}
         uses: actions/cache@v6.1.0
         with:
           path: |
@@ -238,7 +232,7 @@ jobs:
             *-sdk/Java
             *-sdk/Smali
           key: oven-full-v4-${{ runner.os }}
-      - name: Build changed slices serially
+      - name: Build complete source graph serially
         shell: pwsh
         env:
           CREAM_A: ${{ secrets[vars.CREAM_A_NAME] }}
@@ -250,13 +244,14 @@ jobs:
         run: |
           $s=@()
           if('${{ needs.tray.outputs.sponge }}'-eq'true'){$s+='Sponge'}
-          if('${{ needs.tray.outputs.cream }}'-eq'true'){$s+='Meringue';$s+='Cream'}
-          if('${{ needs.tray.outputs.oven }}'-eq'true'){$s+='Oven'}
-          if('${{ needs.tray.outputs.cocoa }}'-eq'true'){$s+='Cocoa'}
-          if('${{ needs.tray.outputs.cherry }}'-eq'true'){$s+='Cherry'}
-          if('${{ needs.tray.outputs.mint }}'-eq'true'){$s+='Mint'}
-          if('${{ needs.tray.outputs.mochi }}'-eq'true'){$s+='Mochi'}
-          if('${{ needs.tray.outputs.truffle }}'-eq'true'){$s+='Truffle'}
+          $s+='Meringue'
+          $s+='Cream'
+          $s+='Oven'
+          $s+='Cocoa'
+          $s+='Cherry'
+          $s+='Mint'
+          $s+='Mochi'
+          $s+='Truffle'
           $a=@{Fill=(Join-Path $PWD.Path 'filling');Slices=$s;Batch=[long]'${{ github.run_id }}';Try=[int]'${{ github.run_attempt }}';SliceTimeoutSeconds=[int]$env:KYRON_SLICE_TIMEOUT_SECONDS;HeartbeatSeconds=[int]$env:KYRON_HEARTBEAT_SECONDS;CompileJobs=[int]$env:KYRON_BUILD_JOBS}
           & ./mix/Tools/BakeSerial.ps1 @a
           exit $LASTEXITCODE
@@ -278,11 +273,11 @@ jobs:
     if: >-
       ${{ always() && !cancelled() && needs.tray.result == 'success' &&
           needs.sensevity.result == 'success' && needs.cdn.result == 'success' &&
-          (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+          needs.build.result == 'success' }}
     uses: ./.github/workflows/doctor.yml
     with:
       mix_ref: ${{ needs.tray.outputs.mix_ref }}
-      fill_ref: ${{ needs.build.outputs.fill_ref || needs.tray.outputs.fill_ref }}
+      fill_ref: ${{ needs.build.outputs.fill_ref }}
     secrets: inherit
 
   headless:
@@ -291,21 +286,19 @@ jobs:
     uses: ./.github/workflows/headless.yml
     with:
       mix_ref: ${{ needs.tray.outputs.mix_ref }}
-      fill_ref: ${{ needs.build.outputs.fill_ref || needs.tray.outputs.fill_ref }}
+      fill_ref: ${{ needs.build.outputs.fill_ref }}
     secrets: inherit
 
   box:
     needs: [tray, build, doctor, headless]
     if: >-
-      ${{ always() && !cancelled() && needs.tray.result == 'success' && needs.doctor.result == 'success' &&
-          needs.tray.outputs.box == 'true' &&
-          (needs.build.result == 'success' || needs.build.result == 'skipped') &&
-          needs.headless.result == 'success' }}
+      ${{ always() && !cancelled() && needs.tray.result == 'success' && needs.build.result == 'success' &&
+          needs.doctor.result == 'success' && needs.headless.result == 'success' }}
     permissions:
       contents: write
     uses: ./.github/workflows/box.yml
     with:
       mix_ref: ${{ needs.tray.outputs.mix_ref }}
-      fill_ref: ${{ needs.build.outputs.fill_ref || needs.tray.outputs.fill_ref }}
-      fold: ${{ needs.tray.outputs.cream == 'true' && needs.tray.outputs.cocoa != 'true' }}
+      fill_ref: ${{ needs.build.outputs.fill_ref }}
+      fold: false
     secrets: inherit
