@@ -29,6 +29,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Sole GitHub Actions owner: private source repositories stay workflow-free.
   tray:
     name: Pin private sources
     runs-on: ubuntu-24.04
