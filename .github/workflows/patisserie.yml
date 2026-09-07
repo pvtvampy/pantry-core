@@ -30,12 +30,13 @@ concurrency:
 
 jobs:
   tray:
-    if: ${{ false }}
     name: Pin private sources
     runs-on: ubuntu-24.04
     outputs:
       mix_ref: ${{ steps.pin.outputs.mix_ref }}
       fill_ref: ${{ steps.pin.outputs.fill_ref }}
+      sense_ref: ${{ steps.pin.outputs.sense_ref }}
+      cdn_ref: ${{ steps.pin.outputs.cdn_ref }}
       sponge: ${{ steps.taste.outputs.sponge }}
       cream: ${{ steps.taste.outputs.cream }}
       cocoa: ${{ steps.taste.outputs.cocoa }}
@@ -68,11 +69,31 @@ jobs:
           mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
           fill: ${{ secrets.FILL_REPO }}
           fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
+      - name: Open SDK source
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ format('{0}/sensevity', github.repository_owner) }}
+          token: ${{ secrets[vars.MIX_KEY_NAME] }}
+          path: sensevity
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: false
+          show-progress: false
+      - name: Open CDN source
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ format('{0}/cdn', github.repository_owner) }}
+          token: ${{ secrets[vars.MIX_KEY_NAME] }}
+          path: cdn
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: false
+          show-progress: false
       - name: Enforce Core-only Actions ownership
         shell: pwsh
         run: |
           $bad=@()
-          foreach($root in @('mix','filling')){
+          foreach($root in @('mix','filling','sensevity','cdn')){
             $dir=Join-Path $PWD.Path "$root/.github/workflows"
             if(Test-Path -LiteralPath $dir -PathType Container){$bad+=@(Get-ChildItem -LiteralPath $dir -File|Where-Object{$_.Extension -in '.yml','.yaml'})}
           }
@@ -84,9 +105,14 @@ jobs:
         run: |
           $mix=(& git -C mix rev-parse HEAD).Trim().ToLowerInvariant()
           $fill=(& git -C filling rev-parse HEAD).Trim().ToLowerInvariant()
-          if($mix -notmatch '^[0-9a-f]{40}$' -or $fill -notmatch '^[0-9a-f]{40}$'){throw 'Private source pin rejected'}
+          $sense=(& git -C sensevity rev-parse HEAD).Trim().ToLowerInvariant()
+          $cdn=(& git -C cdn rev-parse HEAD).Trim().ToLowerInvariant()
+          $pins=@($mix,$fill,$sense,$cdn)
+          if(@($pins|Where-Object{$_ -notmatch '^[0-9a-f]{40}$'}).Count){throw 'Private source pin rejected'}
           "mix_ref=$mix" >> $env:GITHUB_OUTPUT
           "fill_ref=$fill" >> $env:GITHUB_OUTPUT
+          "sense_ref=$sense" >> $env:GITHUB_OUTPUT
+          "cdn_ref=$cdn" >> $env:GITHUB_OUTPUT
       - name: Taste tray
         id: taste
         shell: pwsh
@@ -96,6 +122,56 @@ jobs:
           & ./mix/Tools/BakeSlice.ps1 @a
           exit $LASTEXITCODE
 
+  sensevity:
+    name: Verify sensevity source
+    needs: tray
+    if: ${{ needs.tray.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Open source
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ format('{0}/sensevity', github.repository_owner) }}
+          token: ${{ secrets[vars.MIX_KEY_NAME] }}
+          ref: ${{ needs.tray.outputs.sense_ref }}
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+      - name: Set Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify canonical SDK
+        working-directory: .
+        run: python3 sdk/verify_sdk_contract.py
+
+  cdn:
+    name: Build CDN source
+    needs: tray
+    if: ${{ needs.tray.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Open source
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ format('{0}/cdn', github.repository_owner) }}
+          token: ${{ secrets[vars.MIX_KEY_NAME] }}
+          ref: ${{ needs.tray.outputs.cdn_ref }}
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+      - name: Set Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build and test Kyron Suite
+        working-directory: kyron-suite/v11.5.0
+        run: npm run build && npm test
+      - name: Worker dry-run only
+        working-directory: kyron-suite/v11.5.0
+        run: |
+          npm install --global wrangler@4.127.1
+          wrangler deploy --config worker/wrangler.jsonc --dry-run
   build:
     name: Build changed Workspace sources
     needs: tray
@@ -171,9 +247,10 @@ jobs:
           exit $LASTEXITCODE
 
   doctor:
-    needs: [tray, build]
+    needs: [tray, build, sensevity, cdn]
     if: >-
       ${{ always() && !cancelled() && needs.tray.result == 'success' &&
+          needs.sensevity.result == 'success' && needs.cdn.result == 'success' &&
           (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     uses: ./.github/workflows/doctor.yml
     with:
