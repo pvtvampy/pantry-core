@@ -9,7 +9,7 @@ on:
         default: false
         type: boolean
       bootstrap_rotation:
-        description: Allow intentional Bootstrap publication
+        description: Force Bootstrap rebuild when source inputs are unchanged
         required: false
         default: false
         type: boolean
@@ -43,7 +43,8 @@ jobs:
       fill_ref: ${{ steps.pin.outputs.fill_ref }}
       sense_ref: ${{ steps.pin.outputs.sense_ref }}
       cdn_ref: ${{ steps.pin.outputs.cdn_ref }}
-      sponge: ${{ inputs.bootstrap_rotation && steps.taste.outputs.sponge || 'false' }}
+      sponge_changed: ${{ steps.taste.outputs.sponge_changed }}
+      sponge: ${{ steps.taste.outputs.sponge_changed == 'true' || (inputs.bootstrap_rotation && steps.taste.outputs.sponge == 'true') }}
       cream: ${{ steps.taste.outputs.cream }}
       cocoa: ${{ steps.taste.outputs.cocoa }}
       cherry: ${{ steps.taste.outputs.cherry }}
@@ -198,8 +199,8 @@ jobs:
       KYRON_MSBUILD_TIMEOUT_SECONDS: '1200'
       KYRON_SLICE_TIMEOUT_SECONDS: '3600'
       KYRON_HEARTBEAT_SECONDS: '30'
-      # Only an explicit dispatch may rotate the frozen Bootstrap delivery.
-      KYRON_BOOTSTRAP_ROTATION: ${{ inputs.bootstrap_rotation && '1' || '0' }}
+      # A changed Bootstrap build-input stamp authorizes one rebuild; dispatch can force one.
+      KYRON_BOOTSTRAP_ROTATION: ${{ needs.tray.outputs.sponge == 'true' && '1' || '0' }}
     steps:
       - name: Dust counter
         shell: pwsh
@@ -258,6 +259,32 @@ jobs:
           $a=@{Fill=(Join-Path $PWD.Path 'filling');Slices=$s;Batch=[long]'${{ github.run_id }}';Try=[int]'${{ github.run_attempt }}';SliceTimeoutSeconds=[int]$env:KYRON_SLICE_TIMEOUT_SECONDS;HeartbeatSeconds=[int]$env:KYRON_HEARTBEAT_SECONDS;CompileJobs=[int]$env:KYRON_BUILD_JOBS}
           & ./mix/Tools/BakeSerial.ps1 @a
           exit $LASTEXITCODE
+      - name: Mirror verified Bootstrap into Workspace
+        if: ${{ needs.tray.outputs.sponge == 'true' }}
+        shell: pwsh
+        env:
+          MIX_SOURCE_SHA: ${{ needs.tray.outputs.mix_ref }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $mix=Join-Path $PWD.Path 'mix';$source=($env:MIX_SOURCE_SHA+'').Trim().ToLowerInvariant()
+          if($source-notmatch'^[0-9a-f]{40}$'){throw 'Workspace source pin rejected'}
+          $stage=Join-Path $env:RUNNER_TEMP ('bootstrap-delivery-'+$env:GITHUB_RUN_ID+'-'+$env:GITHUB_RUN_ATTEMPT)
+          & (Join-Path $mix 'src/windows/Bootstrap/build/StageWorkspaceDelivery.ps1') -Workspace $mix -SourceSha $source -Destination $stage
+          function G([string[]]$a){$old=$ErrorActionPreference;try{$ErrorActionPreference='Continue';$o=@(& git.exe -C $mix @a 2>$null);$rc=$LASTEXITCODE}finally{$ErrorActionPreference=$old};if($rc){throw 'Workspace git operation rejected'};return ($o-join"`n").Trim()}
+          function GTry([string[]]$a){$old=$ErrorActionPreference;try{$ErrorActionPreference='Continue';& git.exe -C $mix @a 1>$null 2>$null;$rc=$LASTEXITCODE}finally{$ErrorActionPreference=$old};return $rc-eq0}
+          $published=$false
+          foreach($attempt in 1..4){
+            [void](G @('fetch','--quiet','--prune','origin','main'));$remote=(G @('rev-parse','refs/remotes/origin/main')).ToLowerInvariant()
+            if($remote-notmatch'^[0-9a-f]{40}$'-or!(GTry @('merge-base','--is-ancestor',$source,$remote))){throw 'Workspace main diverged from built Bootstrap source'}
+            $old=$ErrorActionPreference;try{$ErrorActionPreference='Continue';& git.exe -C $mix diff --quiet $source $remote -- 'src/windows/Bootstrap' ':(exclude)src/windows/Bootstrap/delivery/**' 1>$null 2>$null;$diffRc=$LASTEXITCODE}finally{$ErrorActionPreference=$old}
+            if($diffRc-eq1){throw 'Bootstrap source advanced while its artifact was building'}elseif($diffRc-ne0){throw 'Bootstrap source drift check failed'}
+            [void](G @('reset','--hard',$remote));$dst=Join-Path $mix 'src/windows/Bootstrap/delivery';Remove-Item $dst -Recurse -Force -ErrorAction SilentlyContinue;New-Item -ItemType Directory -Force $dst|Out-Null;Copy-Item (Join-Path $stage '*') $dst -Force
+            [void](G @('add','-A','--','src/windows/Bootstrap/delivery'));if(GTry @('diff','--cached','--quiet','--')){Write-Host '[BOOTSTRAP][WORKSPACE-DELIVERY][UNCHANGED]';$published=$true;break}
+            [void](G @('-c','user.name=pastry-bot','-c','user.email=pastry-bot@users.noreply.github.com','commit','-m',('bootstrap: publish delivery '+$source.Substring(0,12))))
+            if(GTry @('push',("--force-with-lease=refs/heads/main:$remote"),'origin','HEAD:main')){Write-Host '[BOOTSTRAP][WORKSPACE-DELIVERY][PUSHED]';$published=$true;break}
+          }
+          if(!$published){throw 'Workspace Bootstrap delivery push raced repeatedly'}
+          Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
       - name: Pin built Pantry delivery
         id: delivery
         shell: pwsh
