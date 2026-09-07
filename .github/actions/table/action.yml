@@ -1,6 +1,6 @@
 name: Set table
 description: Prepare a quiet pastry bench
-# Workspace pin refresh: 27a61c4
+# Workspace pin refresh: c70ad83
 inputs:
   mix:
     required: true
