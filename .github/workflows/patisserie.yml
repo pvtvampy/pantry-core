@@ -197,6 +197,7 @@ jobs:
       KYRON_MSBUILD_TIMEOUT_SECONDS: '1200'
       KYRON_SLICE_TIMEOUT_SECONDS: '3600'
       KYRON_HEARTBEAT_SECONDS: '30'
+# Authenticode trust-chain acceptance remains pinned and cryptographically verified in Workspace.
       KYRON_BOOTSTRAP_ROTATION: '1'
     steps:
       - name: Dust counter
