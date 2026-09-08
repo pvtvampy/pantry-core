@@ -1,4 +1,5 @@
 name: Kyron Sequential Source Pipeline
+# Public orchestration carries only opaque private batch identifiers.
 
 on:
   workflow_dispatch:
