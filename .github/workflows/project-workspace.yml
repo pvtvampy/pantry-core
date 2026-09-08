@@ -1,0 +1,124 @@
+name: Project Workspace
+
+on:
+  workflow_call:
+    inputs:
+      batch_tag:
+        required: true
+        type: string
+      bootstrap_rotation:
+        required: false
+        default: false
+        type: boolean
+    outputs:
+      delivery_tag:
+        description: Opaque private Pantry delivery tag
+        value: ${{ jobs.build.outputs.delivery_tag }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Workspace source graph
+    runs-on: windows-2025
+    timeout-minutes: 360
+    outputs:
+      delivery_tag: ${{ steps.delivery.outputs.delivery_tag }}
+    env:
+      KYRON_SERIAL_BUILD: '1'
+      KYRON_BUILD_JOBS: '2'
+      KYRON_MSBUILD_TIMEOUT_SECONDS: '1200'
+      KYRON_SLICE_TIMEOUT_SECONDS: '3600'
+      KYRON_HEARTBEAT_SECONDS: '30'
+      KYRON_BOOTSTRAP_ROTATION: ${{ inputs.bootstrap_rotation && '1' || '0' }}
+    steps:
+      - name: Open workflow helper
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: recipe
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+          sparse-checkout: .github/actions/private-pin
+
+      - name: Resolve private Workspace pin
+        id: pin
+        uses: ./recipe/.github/actions/private-pin
+        with:
+          fill: ${{ secrets.FILL_REPO }}
+          fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
+          batch-tag: ${{ inputs.batch_tag }}
+          project: workspace
+
+      - name: Open private Workspace
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.pin.outputs.repo }}
+          token: ${{ secrets[vars.MIX_KEY_NAME] }}
+          ref: ${{ steps.pin.outputs.ref }}
+          path: source
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: false
+          show-progress: false
+
+      - name: Chill toolchains
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            *-sdk/Android
+            *-sdk/Java
+            *-sdk/Smali
+          key: workspace-toolchains-v5-${{ runner.os }}
+
+      - name: Build and stage Pantry quietly
+        shell: pwsh
+        env:
+          CREAM_A: ${{ secrets[vars.CREAM_A_NAME] }}
+          CREAM_B: ${{ secrets[vars.CREAM_B_NAME] }}
+          JAM_A: ${{ secrets[vars.JAM_A_NAME] }}
+          JAM_B: ${{ secrets[vars.JAM_B_NAME] }}
+          TIN: ${{ secrets[vars.TIN_NAME] }}
+          PIN: ${{ secrets[vars.PIN_NAME] }}
+        run: |
+          $log=Join-Path $env:RUNNER_TEMP 'workspace-release.log'
+          try{
+            & ./source/PantryPublisher/Invoke-PantryReleaseRecipe.ps1 -PantryPath (Join-Path $PWD.Path 'filling') -RunId ([long]'${{ github.run_id }}') -RunAttempt ([int]'${{ github.run_attempt }}') *>&1 | Set-Content -LiteralPath $log
+            if($LASTEXITCODE){throw 'Workspace release recipe rejected'}
+            Write-Host '[PROJECT/WORKSPACE][OK]'
+          }catch{
+            $phase='unknown'
+            if(Test-Path $log){
+              $text=Get-Content -LiteralPath $log -Raw
+              $m=[regex]::Match($text,'(?m)^\[Patisserie\]\[FAIL\] phase=([a-z0-9-]{1,64})')
+              if($m.Success){$phase=$m.Groups[1].Value}
+            }
+            Write-Host "[PROJECT/WORKSPACE][FAIL] phase=$phase"
+            exit 1
+          }finally{
+            if(Test-Path $log){Remove-Item $log -Force -ErrorAction SilentlyContinue}
+          }
+
+      - name: Publish opaque delivery tag
+        id: delivery
+        shell: pwsh
+        env:
+          BATCH_TAG: ${{ inputs.batch_tag }}
+        run: |
+          $ErrorActionPreference='Stop'
+          & git -C filling fetch --quiet --prune origin main 1>$null 2>$null
+          if($LASTEXITCODE){throw 'Pantry delivery refresh rejected'}
+          $sha=(& git -C filling rev-parse refs/remotes/origin/main 2>$null).Trim().ToLowerInvariant()
+          if($LASTEXITCODE-ne0-or$sha-notmatch'^[0-9a-f]{40}$'){throw 'Pantry delivery pin rejected'}
+          Write-Host "::add-mask::$sha"
+          $tag="pastry-delivery-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          & git -C filling config user.name pastry-bot
+          & git -C filling config user.email pastry-bot@users.noreply.github.com
+          & git -C filling tag -a -f $tag $sha -m ("schema=1`nbatch="+$env:BATCH_TAG) 1>$null 2>$null
+          if($LASTEXITCODE){throw 'Pantry delivery tag creation rejected'}
+          & git -C filling push --quiet --force origin "refs/tags/$tag" 1>$null 2>$null
+          if($LASTEXITCODE){throw 'Pantry delivery tag publication rejected'}
+          "delivery_tag=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host '[PROJECT/WORKSPACE][DELIVERY][OK]'
