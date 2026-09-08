@@ -1,0 +1,67 @@
+name: Project SDK
+
+on:
+  workflow_call:
+    inputs:
+      batch_tag:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify SDK project
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Open workflow helper
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: recipe
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+          sparse-checkout: .github/actions/private-pin
+
+      - name: Resolve private SDK pin
+        id: pin
+        uses: ./recipe/.github/actions/private-pin
+        with:
+          fill: ${{ secrets.FILL_REPO }}
+          fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
+          batch-tag: ${{ inputs.batch_tag }}
+          project: sdk
+
+      - name: Open private SDK project
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.pin.outputs.repo }}
+          token: ${{ secrets[vars.MIX_KEY_NAME] }}
+          ref: ${{ steps.pin.outputs.ref }}
+          path: source
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: false
+          show-progress: false
+
+      - name: Set Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify SDK quietly
+        shell: pwsh
+        run: |
+          $log=Join-Path $env:RUNNER_TEMP 'project-sdk.log'
+          try{
+            & python3 ./source/sdk/verify_sdk_contract.py *>&1 | Set-Content -LiteralPath $log
+            if($LASTEXITCODE){throw 'SDK validation rejected'}
+            Write-Host '[PROJECT/SDK][OK]'
+          }catch{
+            Write-Host '[PROJECT/SDK][FAIL]'
+            exit 1
+          }finally{
+            if(Test-Path $log){Remove-Item $log -Force -ErrorAction SilentlyContinue}
+          }
