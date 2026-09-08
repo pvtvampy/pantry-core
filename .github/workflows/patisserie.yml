@@ -1,5 +1,6 @@
 name: Kyron Sequential Source Pipeline
 # Public orchestration carries only encrypted private source state.
+# Pipeline generation: 3
 
 on:
   workflow_dispatch:
