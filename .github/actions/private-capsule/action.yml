@@ -1,0 +1,138 @@
+name: Private capsule
+description: Seal or open private source state without exposing repository identifiers
+inputs:
+  mode:
+    required: true
+  key:
+    required: true
+  payload:
+    required: false
+    default: ''
+  capsule:
+    required: false
+    default: ''
+  project:
+    required: false
+    default: ''
+  pantry-ref:
+    required: false
+    default: ''
+outputs:
+  capsule:
+    value: ${{ steps.crypto.outputs.capsule }}
+  repo:
+    value: ${{ steps.crypto.outputs.repo }}
+  ref:
+    value: ${{ steps.crypto.outputs.ref }}
+  workspace_repo:
+    value: ${{ steps.crypto.outputs.workspace_repo }}
+  workspace_ref:
+    value: ${{ steps.crypto.outputs.workspace_ref }}
+  pantry_repo:
+    value: ${{ steps.crypto.outputs.pantry_repo }}
+  pantry_ref:
+    value: ${{ steps.crypto.outputs.pantry_ref }}
+  sdk_repo:
+    value: ${{ steps.crypto.outputs.sdk_repo }}
+  sdk_ref:
+    value: ${{ steps.crypto.outputs.sdk_ref }}
+  web_repo:
+    value: ${{ steps.crypto.outputs.web_repo }}
+  web_ref:
+    value: ${{ steps.crypto.outputs.web_ref }}
+runs:
+  using: composite
+  steps:
+    - name: Protect private source state
+      id: crypto
+      shell: pwsh
+      env:
+        CAPSULE_MODE: ${{ inputs.mode }}
+        CAPSULE_KEY: ${{ inputs.key }}
+        CAPSULE_PAYLOAD: ${{ inputs.payload }}
+        CAPSULE_VALUE: ${{ inputs.capsule }}
+        CAPSULE_PROJECT: ${{ inputs.project }}
+        CAPSULE_PANTRY_REF: ${{ inputs.pantry-ref }}
+      run: |
+        $ErrorActionPreference='Stop'
+        function Bytes([string]$Text){return [Text.Encoding]::UTF8.GetBytes($Text)}
+        function Sha([byte[]]$Data){$s=[Security.Cryptography.SHA256]::Create();try{return $s.ComputeHash($Data)}finally{$s.Dispose()}}
+        function Derive([byte[]]$Master,[string]$Label){$h=[Security.Cryptography.HMACSHA256]::new($Master);try{return $h.ComputeHash((Bytes $Label))}finally{$h.Dispose()}}
+        function Copy2([byte[]]$A,[byte[]]$B){
+          $o=New-Object byte[] ($A.Length+$B.Length)
+          [Array]::Copy($A,0,$o,0,$A.Length);[Array]::Copy($B,0,$o,$A.Length,$B.Length)
+          return $o
+        }
+        function Keys(){
+          if([string]::IsNullOrWhiteSpace($env:CAPSULE_KEY)){throw 'private capsule key unavailable'}
+          $master=Sha (Bytes ("kyron-private-capsule-v1`n"+$env:CAPSULE_KEY))
+          return ,@((Derive $master 'enc'),(Derive $master 'mac'))
+        }
+        function Seal([string]$Payload){
+          if([string]::IsNullOrWhiteSpace($Payload)){throw 'private capsule payload unavailable'}
+          $keys=Keys;$aes=[Security.Cryptography.Aes]::Create()
+          try{
+            $aes.Key=$keys[0];$aes.Mode=[Security.Cryptography.CipherMode]::CBC;$aes.Padding=[Security.Cryptography.PaddingMode]::PKCS7;$aes.GenerateIV()
+            $plain=Bytes $Payload;$enc=$aes.CreateEncryptor()
+            try{$cipher=$enc.TransformFinalBlock($plain,0,$plain.Length)}finally{$enc.Dispose()}
+            $body=Copy2 $aes.IV $cipher;$h=[Security.Cryptography.HMACSHA256]::new($keys[1])
+            try{$mac=$h.ComputeHash($body)}finally{$h.Dispose()}
+            return [Convert]::ToBase64String((Copy2 $aes.IV (Copy2 $mac $cipher)))
+          }finally{$aes.Dispose()}
+        }
+        function Open([string]$Capsule){
+          if([string]::IsNullOrWhiteSpace($Capsule)){throw 'private capsule unavailable'}
+          try{$raw=[Convert]::FromBase64String($Capsule)}catch{throw 'private capsule encoding rejected'}
+          if($raw.Length-lt65){throw 'private capsule length rejected'}
+          [byte[]]$iv=$raw[0..15];[byte[]]$mac=$raw[16..47];[byte[]]$cipher=$raw[48..($raw.Length-1)]
+          $keys=Keys;$body=Copy2 $iv $cipher;$h=[Security.Cryptography.HMACSHA256]::new($keys[1])
+          try{$actual=$h.ComputeHash($body)}finally{$h.Dispose()}
+          if(![Security.Cryptography.CryptographicOperations]::FixedTimeEquals($mac,$actual)){throw 'private capsule authentication rejected'}
+          $aes=[Security.Cryptography.Aes]::Create()
+          try{
+            $aes.Key=$keys[0];$aes.IV=$iv;$aes.Mode=[Security.Cryptography.CipherMode]::CBC;$aes.Padding=[Security.Cryptography.PaddingMode]::PKCS7
+            $dec=$aes.CreateDecryptor()
+            try{$plain=$dec.TransformFinalBlock($cipher,0,$cipher.Length)}finally{$dec.Dispose()}
+          }catch{throw 'private capsule decryption rejected'}finally{$aes.Dispose()}
+          try{return ([Text.Encoding]::UTF8.GetString($plain)|ConvertFrom-Json)}catch{throw 'private capsule payload rejected'}
+        }
+        function CheckState($State){
+          if([int]$State.schema-ne1){throw 'private capsule schema rejected'}
+          foreach($name in @('workspace','pantry','sdk','web')){
+            $node=$State.$name
+            if($null-eq$node-or([string]$node.repo)-notmatch'^[^/\s]+/[^/\s]+$'-or([string]$node.ref)-notmatch'^[0-9a-f]{40}$'){throw 'private capsule state rejected'}
+          }
+        }
+        $mode=($env:CAPSULE_MODE+'').Trim().ToLowerInvariant()
+        if($mode-eq'seal'){
+          $sealed=Seal $env:CAPSULE_PAYLOAD
+          "capsule=$sealed" >> $env:GITHUB_OUTPUT
+          Write-Host '[CAPSULE][SEALED]'
+          exit 0
+        }
+        $state=Open $env:CAPSULE_VALUE;CheckState $state
+        if($mode-eq'advance'){
+          $next=($env:CAPSULE_PANTRY_REF+'').Trim().ToLowerInvariant()
+          if($next-notmatch'^[0-9a-f]{40}$'){throw 'private delivery ref rejected'}
+          Write-Host "::add-mask::$next"
+          $state.pantry.ref=$next
+          $payload=$state|ConvertTo-Json -Compress -Depth 5
+          Write-Host "::add-mask::$payload"
+          "capsule=$(Seal $payload)" >> $env:GITHUB_OUTPUT
+          Write-Host '[CAPSULE][ADVANCED]'
+          exit 0
+        }
+        if($mode-ne'open'){throw 'private capsule mode rejected'}
+        foreach($name in @('workspace','pantry','sdk','web')){
+          Write-Host "::add-mask::$([string]$state.$name.repo)"
+          Write-Host "::add-mask::$([string]$state.$name.ref)"
+        }
+        $project=($env:CAPSULE_PROJECT+'').Trim().ToLowerInvariant()
+        if($project-notin@('workspace','sdk','web')){throw 'private capsule project rejected'}
+        "repo=$([string]$state.$project.repo)" >> $env:GITHUB_OUTPUT
+        "ref=$([string]$state.$project.ref)" >> $env:GITHUB_OUTPUT
+        foreach($name in @('workspace','pantry','sdk','web')){
+          "$($name)_repo=$([string]$state.$name.repo)" >> $env:GITHUB_OUTPUT
+          "$($name)_ref=$([string]$state.$name.ref)" >> $env:GITHUB_OUTPUT
+        }
+        Write-Host '[CAPSULE][OPENED]'

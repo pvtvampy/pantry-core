@@ -1,5 +1,5 @@
 name: Kyron Sequential Source Pipeline
-# Public orchestration carries only opaque private batch identifiers.
+# Public orchestration carries only encrypted private source state.
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ on:
       - '.github/workflows/doctor.yml'
       - '.github/workflows/headless.yml'
       - '.github/workflows/box.yml'
-      - '.github/actions/private-pin/**'
+      - '.github/actions/private-capsule/**'
 
 permissions:
   contents: read
@@ -45,7 +45,7 @@ jobs:
     if: ${{ needs.sources.result == 'success' }}
     uses: ./.github/workflows/project-sdk.yml
     with:
-      batch_tag: ${{ needs.sources.outputs.batch_tag }}
+      capsule: ${{ needs.sources.outputs.capsule }}
     secrets: inherit
 
   web:
@@ -54,7 +54,7 @@ jobs:
     if: ${{ needs.sdk.result == 'success' }}
     uses: ./.github/workflows/project-web.yml
     with:
-      batch_tag: ${{ needs.sources.outputs.batch_tag }}
+      capsule: ${{ needs.sources.outputs.capsule }}
     secrets: inherit
 
   workspace:
@@ -63,38 +63,35 @@ jobs:
     if: ${{ needs.web.result == 'success' }}
     uses: ./.github/workflows/project-workspace.yml
     with:
-      batch_tag: ${{ needs.sources.outputs.batch_tag }}
+      capsule: ${{ needs.sources.outputs.capsule }}
       bootstrap_rotation: ${{ inputs.bootstrap_rotation == true }}
     secrets: inherit
 
   doctor:
     name: 5 · Source validation
-    needs: [sources, workspace]
+    needs: [workspace]
     if: ${{ needs.workspace.result == 'success' }}
     uses: ./.github/workflows/doctor.yml
     with:
-      batch_tag: ${{ needs.sources.outputs.batch_tag }}
-      delivery_tag: ${{ needs.workspace.outputs.delivery_tag }}
+      capsule: ${{ needs.workspace.outputs.delivery_capsule }}
     secrets: inherit
 
   headless:
     name: 6 · Runtime smoke
-    needs: [sources, workspace, doctor]
+    needs: [workspace, doctor]
     if: ${{ needs.doctor.result == 'success' }}
     uses: ./.github/workflows/headless.yml
     with:
-      batch_tag: ${{ needs.sources.outputs.batch_tag }}
-      delivery_tag: ${{ needs.workspace.outputs.delivery_tag }}
+      capsule: ${{ needs.workspace.outputs.delivery_capsule }}
     secrets: inherit
 
   publish:
     name: 7 · Pantry prepare + publish
-    needs: [sources, workspace, headless]
+    needs: [workspace, headless]
     if: ${{ needs.headless.result == 'success' }}
     permissions:
       contents: write
     uses: ./.github/workflows/box.yml
     with:
-      batch_tag: ${{ needs.sources.outputs.batch_tag }}
-      delivery_tag: ${{ needs.workspace.outputs.delivery_tag }}
+      capsule: ${{ needs.workspace.outputs.delivery_capsule }}
     secrets: inherit

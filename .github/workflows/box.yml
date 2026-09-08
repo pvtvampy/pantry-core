@@ -3,10 +3,7 @@ name: Pantry Prepare + Publish
 on:
   workflow_call:
     inputs:
-      batch_tag:
-        required: true
-        type: string
-      delivery_tag:
+      capsule:
         required: true
         type: string
 
@@ -19,7 +16,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 45
     steps:
-      - name: Open workflow helper
+      - name: Open capsule helper
         uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
@@ -27,28 +24,39 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
           show-progress: false
-          sparse-checkout: .github/actions/private-pin
+          sparse-checkout: .github/actions/private-capsule
 
-      - name: Resolve private Workspace pin
-        id: pin
-        uses: ./recipe/.github/actions/private-pin
+      - name: Open private Workspace state
+        id: state
+        uses: ./recipe/.github/actions/private-capsule
         with:
-          fill: ${{ secrets.FILL_REPO }}
-          fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-          batch-tag: ${{ inputs.batch_tag }}
-          delivery-tag: ${{ inputs.delivery_tag }}
+          mode: open
+          key: ${{ secrets[vars.MIX_KEY_NAME] }}
+          capsule: ${{ inputs.capsule }}
           project: workspace
 
       - name: Open private Workspace
         uses: actions/checkout@v6
         with:
-          repository: ${{ steps.pin.outputs.repo }}
+          repository: ${{ steps.state.outputs.workspace_repo }}
           token: ${{ secrets[vars.MIX_KEY_NAME] }}
-          ref: ${{ steps.pin.outputs.ref }}
+          ref: ${{ steps.state.outputs.workspace_ref }}
           path: source
           fetch-depth: 1
           fetch-tags: false
           persist-credentials: false
+          show-progress: false
+
+      - name: Open private Pantry delivery
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.state.outputs.pantry_repo }}
+          token: ${{ secrets[vars.FILL_KEY_NAME] }}
+          ref: ${{ steps.state.outputs.pantry_ref }}
+          path: filling
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: true
           show-progress: false
 
       - name: Open Pantry Core publish target
@@ -64,7 +72,7 @@ jobs:
         uses: actions/cache@v6.1.0
         with:
           path: '*-sdk/Python'
-          key: pantry-publisher-python-v2-${{ runner.os }}-${{ hashFiles('source/toolchains.lock.json') }}
+          key: pantry-publisher-python-v3-${{ runner.os }}-${{ hashFiles('source/toolchains.lock.json') }}
 
       - name: Prepare and publish quietly
         shell: pwsh

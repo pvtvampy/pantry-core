@@ -3,7 +3,7 @@ name: Project Web
 on:
   workflow_call:
     inputs:
-      batch_tag:
+      capsule:
         required: true
         type: string
 
@@ -15,7 +15,7 @@ jobs:
     name: Verify web project
     runs-on: ubuntu-24.04
     steps:
-      - name: Open workflow helper
+      - name: Open capsule helper
         uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
@@ -23,23 +23,23 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
           show-progress: false
-          sparse-checkout: .github/actions/private-pin
+          sparse-checkout: .github/actions/private-capsule
 
-      - name: Resolve private web pin
-        id: pin
-        uses: ./recipe/.github/actions/private-pin
+      - name: Open private web state
+        id: state
+        uses: ./recipe/.github/actions/private-capsule
         with:
-          fill: ${{ secrets.FILL_REPO }}
-          fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-          batch-tag: ${{ inputs.batch_tag }}
+          mode: open
+          key: ${{ secrets[vars.MIX_KEY_NAME] }}
+          capsule: ${{ inputs.capsule }}
           project: web
 
       - name: Open private web project
         uses: actions/checkout@v6
         with:
-          repository: ${{ steps.pin.outputs.repo }}
+          repository: ${{ steps.state.outputs.repo }}
           token: ${{ secrets[vars.MIX_KEY_NAME] }}
-          ref: ${{ steps.pin.outputs.ref }}
+          ref: ${{ steps.state.outputs.ref }}
           path: source
           fetch-depth: 1
           fetch-tags: false
