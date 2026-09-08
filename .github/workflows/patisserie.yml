@@ -1,4 +1,4 @@
-name: Kyron Source Pipeline
+name: Kyron Sequential Source Pipeline
 
 on:
   workflow_dispatch:
@@ -16,10 +16,14 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/patisserie.yml'
+      - '.github/workflows/source-pin.yml'
+      - '.github/workflows/project-sdk.yml'
+      - '.github/workflows/project-web.yml'
+      - '.github/workflows/project-workspace.yml'
       - '.github/workflows/doctor.yml'
       - '.github/workflows/headless.yml'
       - '.github/workflows/box.yml'
-      - '.github/actions/table/**'
+      - '.github/actions/private-pin/**'
 
 permissions:
   contents: read
@@ -29,265 +33,67 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Sole GitHub Actions owner: private source repositories stay workflow-free.
-  tray:
-    name: Pin private sources
-    runs-on: ubuntu-24.04
-    outputs:
-      mix_ref: ${{ steps.pin.outputs.mix_ref }}
-      fill_ref: ${{ steps.pin.outputs.fill_ref }}
-      sense_ref: ${{ steps.pin.outputs.sense_ref }}
-      cdn_ref: ${{ steps.pin.outputs.cdn_ref }}
-      sponge_changed: ${{ steps.taste.outputs.sponge_changed }}
-      sponge: ${{ inputs.bootstrap_rotation && 'true' || 'false' }}
-      cream: ${{ steps.taste.outputs.cream }}
-      cocoa: ${{ steps.taste.outputs.cocoa }}
-      cherry: ${{ steps.taste.outputs.cherry }}
-      mint: ${{ steps.taste.outputs.mint }}
-      mochi: ${{ steps.taste.outputs.mochi }}
-      truffle: ${{ steps.taste.outputs.truffle }}
-      oven: ${{ steps.taste.outputs.oven }}
-      box: ${{ steps.taste.outputs.box }}
-    steps:
-      - name: Dust counter
-        shell: pwsh
-        run: |
-          Write-Host "::add-mask::$env:GITHUB_REPOSITORY"
-          $crumb=$env:GITHUB_REPOSITORY -split '/',2
-          foreach($x in $crumb){if($x){Write-Host "::add-mask::$x"}}
-      - name: Open recipe
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-          path: recipe
-          fetch-depth: 1
-          persist-credentials: false
-          show-progress: false
-          sparse-checkout: .github/actions/table
-      - name: Set table
-        uses: ./recipe/.github/actions/table
-        with:
-          mix: ${{ secrets.MIX_REPO }}
-          mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
-          fill: ${{ secrets.FILL_REPO }}
-          fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-      - name: Verify SrcVersion consumer contract
-        shell: pwsh
-        run: |
-          python3 ./filling/tools/sync_consumer_contract.py --config ./filling/SrcVersion.ini --output ./mix/src/common/Shared/pantry_contract.hpp --check
-          if($LASTEXITCODE){throw 'SrcVersion consumer contract rejected'}
-          Write-Host '[SOURCE][VERSION][OK] SrcVersion.ini owns the generated Workspace contract'
-      - name: Open SDK source
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ format('{0}/sensevity', github.repository_owner) }}
-          token: ${{ secrets[vars.MIX_KEY_NAME] }}
-          path: sensevity
-          fetch-depth: 1
-          fetch-tags: false
-          persist-credentials: false
-          show-progress: false
-      - name: Open CDN source
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ format('{0}/cdn', github.repository_owner) }}
-          token: ${{ secrets[vars.MIX_KEY_NAME] }}
-          path: cdn
-          fetch-depth: 1
-          fetch-tags: false
-          persist-credentials: false
-          show-progress: false
-      - name: Enforce Core-only Actions ownership
-        shell: pwsh
-        run: |
-          $bad=@()
-          foreach($root in @('mix','filling','sensevity','cdn')){
-            $dir=Join-Path $PWD.Path "$root/.github/workflows"
-            if(Test-Path -LiteralPath $dir -PathType Container){$bad+=@(Get-ChildItem -LiteralPath $dir -File|Where-Object{$_.Extension -in '.yml','.yaml'})}
-          }
-          if($bad.Count){throw 'Private source GitHub Actions ownership rejected; pantry-core is the only Actions owner'}
-          Write-Host '[SOURCE][OWNERSHIP][OK] private sources are workflow-free; pantry-core owns Actions'
-      - name: Pin tray
-        id: pin
-        shell: pwsh
-        run: |
-          $mix=(& git -C mix rev-parse HEAD).Trim().ToLowerInvariant()
-          $fill=(& git -C filling rev-parse HEAD).Trim().ToLowerInvariant()
-          $sense=(& git -C sensevity rev-parse HEAD).Trim().ToLowerInvariant()
-          $cdn=(& git -C cdn rev-parse HEAD).Trim().ToLowerInvariant()
-          $pins=@($mix,$fill,$sense,$cdn)
-          if(@($pins|Where-Object{$_ -notmatch '^[0-9a-f]{40}$'}).Count){throw 'Private source pin rejected'}
-          "mix_ref=$mix" >> $env:GITHUB_OUTPUT
-          "fill_ref=$fill" >> $env:GITHUB_OUTPUT
-          "sense_ref=$sense" >> $env:GITHUB_OUTPUT
-          "cdn_ref=$cdn" >> $env:GITHUB_OUTPUT
-          Write-Host "[Patisserie][PIN] mix=$mix fill=$fill sense=$sense cdn=$cdn"
-      - name: Taste full source tray
-        id: taste
-        shell: pwsh
-        run: |
-          $a=@{Fill=(Join-Path $PWD.Path 'filling');Slice='Probe';Fresh=$true}
-          & ./mix/Tools/BakeSlice.ps1 @a
-          exit $LASTEXITCODE
+  sources:
+    name: 1 · Pin private sources
+    uses: ./.github/workflows/source-pin.yml
+    secrets: inherit
 
-  sensevity:
-    name: Verify sensevity source
-    needs: tray
-    if: ${{ needs.tray.result == 'success' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Open source
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ format('{0}/sensevity', github.repository_owner) }}
-          token: ${{ secrets[vars.MIX_KEY_NAME] }}
-          ref: ${{ needs.tray.outputs.sense_ref }}
-          fetch-depth: 1
-          persist-credentials: false
-          show-progress: false
-      - name: Set Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Verify canonical SDK
-        working-directory: .
-        run: python3 sdk/verify_sdk_contract.py
+  sdk:
+    name: 2 · SDK project
+    needs: sources
+    if: ${{ needs.sources.result == 'success' }}
+    uses: ./.github/workflows/project-sdk.yml
+    with:
+      batch_tag: ${{ needs.sources.outputs.batch_tag }}
+    secrets: inherit
 
-  cdn:
-    name: Build CDN source
-    needs: tray
-    if: ${{ needs.tray.result == 'success' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Open source
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ format('{0}/cdn', github.repository_owner) }}
-          token: ${{ secrets[vars.MIX_KEY_NAME] }}
-          ref: ${{ needs.tray.outputs.cdn_ref }}
-          fetch-depth: 1
-          persist-credentials: false
-          show-progress: false
-      - name: Set Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Build and test Kyron Suite
-        working-directory: kyron-suite/v11.5.0
-        run: npm run build && npm test
-      - name: Worker dry-run only
-        working-directory: kyron-suite/v11.5.0
-        run: |
-          npm install --global wrangler@4.127.1
-          wrangler deploy --config worker/wrangler.jsonc --dry-run
+  web:
+    name: 3 · Web project
+    needs: sdk
+    if: ${{ needs.sdk.result == 'success' }}
+    uses: ./.github/workflows/project-web.yml
+    with:
+      batch_tag: ${{ needs.sources.outputs.batch_tag }}
+    secrets: inherit
 
-  build:
-    name: Build complete Workspace sources
-    needs: tray
-    if: ${{ needs.tray.result == 'success' }}
-    runs-on: windows-2025
-    timeout-minutes: 360
-    outputs:
-      fill_ref: ${{ steps.delivery.outputs.fill_ref }}
-    env:
-      # Workspace slices bootstrap their compiler shell from the pinned source toolchain.
-      KYRON_SERIAL_BUILD: '1'
-      KYRON_BUILD_JOBS: '2'
-      KYRON_MSBUILD_TIMEOUT_SECONDS: '1200'
-      KYRON_SLICE_TIMEOUT_SECONDS: '3600'
-      KYRON_HEARTBEAT_SECONDS: '30'
-      # Frozen Bootstrap publication requires an explicit workflow dispatch input.
-      KYRON_BOOTSTRAP_ROTATION: ${{ inputs.bootstrap_rotation && '1' || '0' }}
-    steps:
-      - name: Dust counter
-        shell: pwsh
-        run: |
-          Write-Host "::add-mask::$env:GITHUB_REPOSITORY"
-          $crumb=$env:GITHUB_REPOSITORY -split '/',2
-          foreach($x in $crumb){if($x){Write-Host "::add-mask::$x"}}
-
-      - name: Open recipe
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-          path: recipe
-          fetch-depth: 1
-          persist-credentials: false
-          show-progress: false
-          sparse-checkout: .github/actions/table
-      - name: Set table
-        uses: ./recipe/.github/actions/table
-        with:
-          mix: ${{ secrets.MIX_REPO }}
-          mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
-          mix_ref: ${{ needs.tray.outputs.mix_ref }}
-          fill: ${{ secrets.FILL_REPO }}
-          fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-          fill_ref: ${{ needs.tray.outputs.fill_ref }}
-      - name: Chill oven
-        uses: actions/cache@v6.1.0
-        with:
-          path: |
-            *-sdk/Android
-            *-sdk/Java
-            *-sdk/Smali
-          key: oven-full-v4-${{ runner.os }}
-      - name: Build complete source graph serially
-        shell: pwsh
-        env:
-          CREAM_A: ${{ secrets[vars.CREAM_A_NAME] }}
-          CREAM_B: ${{ secrets[vars.CREAM_B_NAME] }}
-          JAM_A: ${{ secrets[vars.JAM_A_NAME] }}
-          JAM_B: ${{ secrets[vars.JAM_B_NAME] }}
-          TIN: ${{ secrets[vars.TIN_NAME] }}
-          PIN: ${{ secrets[vars.PIN_NAME] }}
-        run: |
-          & ./mix/PantryPublisher/Invoke-PantryReleaseRecipe.ps1 -PantryPath (Join-Path $PWD.Path 'filling') -RunId ([long]'${{ github.run_id }}') -RunAttempt ([int]'${{ github.run_attempt }}')
-          exit $LASTEXITCODE
-      - name: Pin built Pantry delivery
-        id: delivery
-        shell: pwsh
-        run: |
-          $old=$ErrorActionPreference
-          try{$ErrorActionPreference='Continue';& git -C filling fetch --quiet --prune origin main 1>$null 2>$null;$rc=$LASTEXITCODE}
-          finally{$ErrorActionPreference=$old}
-          if($rc){throw 'Pantry final pin fetch rejected'}
-          $fill=(& git -C filling rev-parse refs/remotes/origin/main 2>$null).Trim().ToLowerInvariant()
-          if($LASTEXITCODE-ne0-or$fill-notmatch'^[0-9a-f]{40}$'){throw 'Pantry final pin rejected'}
-          "fill_ref=$fill" >> $env:GITHUB_OUTPUT
-          Write-Host '[Patisserie][DELIVERY/PIN][OK]'
+  workspace:
+    name: 4 · Workspace project
+    needs: [sources, web]
+    if: ${{ needs.web.result == 'success' }}
+    uses: ./.github/workflows/project-workspace.yml
+    with:
+      batch_tag: ${{ needs.sources.outputs.batch_tag }}
+      bootstrap_rotation: ${{ inputs.bootstrap_rotation == true }}
+    secrets: inherit
 
   doctor:
-    needs: [tray, build, sensevity, cdn]
-    if: >-
-      ${{ always() && !cancelled() && needs.tray.result == 'success' &&
-          needs.sensevity.result == 'success' && needs.cdn.result == 'success' &&
-          needs.build.result == 'success' }}
+    name: 5 · Source validation
+    needs: [sources, workspace]
+    if: ${{ needs.workspace.result == 'success' }}
     uses: ./.github/workflows/doctor.yml
     with:
-      mix_ref: ${{ needs.tray.outputs.mix_ref }}
-      fill_ref: ${{ needs.build.outputs.fill_ref }}
+      batch_tag: ${{ needs.sources.outputs.batch_tag }}
+      delivery_tag: ${{ needs.workspace.outputs.delivery_tag }}
     secrets: inherit
 
   headless:
-    needs: [tray, build, doctor]
-    if: ${{ always() && !cancelled() && needs.tray.result == 'success' && needs.doctor.result == 'success' }}
+    name: 6 · Runtime smoke
+    needs: [sources, workspace, doctor]
+    if: ${{ needs.doctor.result == 'success' }}
     uses: ./.github/workflows/headless.yml
     with:
-      mix_ref: ${{ needs.tray.outputs.mix_ref }}
-      fill_ref: ${{ needs.build.outputs.fill_ref }}
+      batch_tag: ${{ needs.sources.outputs.batch_tag }}
+      delivery_tag: ${{ needs.workspace.outputs.delivery_tag }}
     secrets: inherit
 
-  box:
-    needs: [tray, build, doctor, headless]
-    if: >-
-      ${{ always() && !cancelled() && needs.tray.result == 'success' && needs.build.result == 'success' &&
-          needs.doctor.result == 'success' && needs.headless.result == 'success' }}
+  publish:
+    name: 7 · Pantry prepare + publish
+    needs: [sources, workspace, headless]
+    if: ${{ needs.headless.result == 'success' }}
     permissions:
       contents: write
     uses: ./.github/workflows/box.yml
     with:
-      mix_ref: ${{ needs.tray.outputs.mix_ref }}
-      fill_ref: ${{ needs.build.outputs.fill_ref }}
-      fold: false
+      batch_tag: ${{ needs.sources.outputs.batch_tag }}
+      delivery_tag: ${{ needs.workspace.outputs.delivery_tag }}
     secrets: inherit
