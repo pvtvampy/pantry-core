@@ -242,18 +242,7 @@ jobs:
           TIN: ${{ secrets[vars.TIN_NAME] }}
           PIN: ${{ secrets[vars.PIN_NAME] }}
         run: |
-          $s=@()
-          if('${{ needs.tray.outputs.sponge }}'-eq'true'){$s+='Sponge'}
-          $s+='Meringue'
-          $s+='Cream'
-          $s+='Oven'
-          $s+='Cocoa'
-          $s+='Cherry'
-          $s+='Mint'
-          $s+='Mochi'
-          $s+='Truffle'
-          $a=@{Fill=(Join-Path $PWD.Path 'filling');Slices=$s;Batch=[long]'${{ github.run_id }}';Try=[int]'${{ github.run_attempt }}';SliceTimeoutSeconds=[int]$env:KYRON_SLICE_TIMEOUT_SECONDS;HeartbeatSeconds=[int]$env:KYRON_HEARTBEAT_SECONDS;CompileJobs=[int]$env:KYRON_BUILD_JOBS}
-          & ./mix/Tools/BakeSerial.ps1 @a
+          & ./mix/PantryPublisher/Invoke-PantryReleaseRecipe.ps1 -PantryPath (Join-Path $PWD.Path 'filling') -RunId ([long]'${{ github.run_id }}') -RunAttempt ([int]'${{ github.run_attempt }}')
           exit $LASTEXITCODE
       - name: Pin built Pantry delivery
         id: delivery
