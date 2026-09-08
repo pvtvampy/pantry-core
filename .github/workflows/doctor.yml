@@ -3,91 +3,22 @@ name: Pantry Source Validation
 on:
   workflow_call:
     inputs:
-      mix_ref:
+      batch_tag:
         required: true
         type: string
-      fill_ref:
+      delivery_tag:
         required: true
         type: string
 
 permissions:
   contents: read
 
-concurrency:
-  group: kitchen-doctor
-  cancel-in-progress: false
-
 jobs:
-  gate:
-    name: Taste snapshot
-    runs-on: ubuntu-24.04
-    outputs:
-      run: ${{ steps.state.outputs.run }}
-      mix_ref: ${{ steps.state.outputs.mix_ref }}
-      fill_ref: ${{ steps.state.outputs.fill_ref }}
-      workflow_ref: ${{ steps.state.outputs.workflow_ref }}
-    steps:
-      - name: Dust counter
-        shell: pwsh
-        run: |
-          Write-Host "::add-mask::$env:GITHUB_REPOSITORY"
-          $crumb=$env:GITHUB_REPOSITORY -split '/',2
-          foreach($x in $crumb){if($x){Write-Host "::add-mask::$x"}}
-      - name: Open recipe
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-          path: recipe
-          fetch-depth: 1
-          persist-credentials: false
-          show-progress: false
-          sparse-checkout: .github/actions/table
-      - name: Set table
-        uses: ./recipe/.github/actions/table
-        with:
-          mix: ${{ secrets.MIX_REPO }}
-          mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
-          mix_ref: ${{ inputs.mix_ref || 'main' }}
-          fill: ${{ secrets.FILL_REPO }}
-          fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-          fill_ref: ${{ inputs.fill_ref || 'main' }}
-      - name: Read marker
-        id: state
-        shell: pwsh
-        run: |
-          $mix=(& git -C mix rev-parse HEAD).Trim().ToLowerInvariant()
-          $fill=(& git -C filling rev-parse HEAD).Trim().ToLowerInvariant()
-          $flow=(& git -C recipe rev-parse 'HEAD:.github').Trim().ToLowerInvariant()
-          if($mix -notmatch '^[0-9a-f]{40}$' -or $fill -notmatch '^[0-9a-f]{40}$' -or $flow -notmatch '^[0-9a-f]{40}$'){throw 'snapshot rejected'}
-          $run='true'
-          & git -C filling fetch --quiet --force origin refs/tags/pastry-doctor:refs/tags/pastry-doctor 2>$null
-          if($LASTEXITCODE-eq0){
-            $msg=(& git -C filling tag -l pastry-doctor '--format=%(contents)')-join"`n"
-            $m=[regex]::Match($msg,'(?m)^source=([0-9a-f]{40})$').Groups[1].Value
-            $f=[regex]::Match($msg,'(?m)^delivery=([0-9a-f]{40})$').Groups[1].Value
-            $w=[regex]::Match($msg,'(?m)^workflow=([0-9a-f]{40})$').Groups[1].Value
-            $s=[regex]::Match($msg,'(?m)^status=(success|failure|cancelled)$').Groups[1].Value
-            if($s-eq'success' -and $m-eq$mix -and $f-eq$fill -and $w-eq$flow){$run='false'}
-          }
-          "run=$run" >> $env:GITHUB_OUTPUT
-          "mix_ref=$mix" >> $env:GITHUB_OUTPUT
-          "fill_ref=$fill" >> $env:GITHUB_OUTPUT
-          "workflow_ref=$flow" >> $env:GITHUB_OUTPUT
-          Write-Host "[Doctor] snapshot ready run=$run"
-
   portable:
     name: Portable checks
-    needs: gate
-    if: ${{ needs.gate.outputs.run == 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - name: Dust counter
-        shell: pwsh
-        run: |
-          Write-Host "::add-mask::$env:GITHUB_REPOSITORY"
-          $crumb=$env:GITHUB_REPOSITORY -split '/',2
-          foreach($x in $crumb){if($x){Write-Host "::add-mask::$x"}}
-      - name: Open recipe
+      - name: Open workflow helper
         uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
@@ -95,48 +26,54 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
           show-progress: false
-          sparse-checkout: .github/actions/table
-      - name: Set table
-        uses: ./recipe/.github/actions/table
+          sparse-checkout: .github/actions/private-pin
+
+      - name: Resolve private Workspace pin
+        id: pin
+        uses: ./recipe/.github/actions/private-pin
         with:
-          mix: ${{ secrets.MIX_REPO }}
-          mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
-          mix_ref: ${{ needs.gate.outputs.mix_ref }}
           fill: ${{ secrets.FILL_REPO }}
           fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-          fill_ref: ${{ needs.gate.outputs.fill_ref }}
-      - name: Taste
+          batch-tag: ${{ inputs.batch_tag }}
+          delivery-tag: ${{ inputs.delivery_tag }}
+          project: workspace
+
+      - name: Open private Workspace
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.pin.outputs.repo }}
+          token: ${{ secrets[vars.MIX_KEY_NAME] }}
+          ref: ${{ steps.pin.outputs.ref }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+
+      - name: Taste quietly
         shell: pwsh
         run: |
           $log=Join-Path $env:RUNNER_TEMP 'doctor-portable.log'
-          try {
-            & ./mix/Tools/BakeDoctor.ps1 -Mode Portable -Fill (Join-Path $PWD.Path 'filling') *>&1 | Set-Content -LiteralPath $log
+          try{
+            & ./source/Tools/BakeDoctor.ps1 -Mode Portable -Fill (Join-Path $PWD.Path 'filling') *>&1 | Set-Content -LiteralPath $log
             if($LASTEXITCODE){throw 'portable rejected'}
-            Write-Host '[Doctor] portable ready'
-          } catch {
-            $crumb=if(Test-Path $log){(Get-FileHash $log -Algorithm SHA256).Hash.ToLowerInvariant().Substring(0,16)}else{'none'}
+            Write-Host '[DOCTOR/PORTABLE][OK]'
+          }catch{
             $phase='unknown'
             if(Test-Path $log){$m=[regex]::Match((Get-Content -LiteralPath $log -Raw),'(?m)^DOCTOR_SAFE_PHASE=([a-z0-9-]{1,48})\r?$');if($m.Success){$phase=$m.Groups[1].Value}}
-            Write-Host "[Doctor] portable rejected phase=$phase crumb=$crumb"
+            Write-Host "[DOCTOR/PORTABLE][FAIL] phase=$phase"
             exit 1
-          } finally {
+          }finally{
             if(Test-Path $log){Remove-Item $log -Force -ErrorAction SilentlyContinue}
           }
 
   windows:
     name: Windows checks
-    needs: [gate, portable]
-    if: ${{ always() && needs.gate.result == 'success' && needs.gate.outputs.run == 'true' }}
+    needs: portable
+    if: ${{ needs.portable.result == 'success' }}
     runs-on: windows-2025
     timeout-minutes: 25
     steps:
-      - name: Dust counter
-        shell: pwsh
-        run: |
-          Write-Host "::add-mask::$env:GITHUB_REPOSITORY"
-          $crumb=$env:GITHUB_REPOSITORY -split '/',2
-          foreach($x in $crumb){if($x){Write-Host "::add-mask::$x"}}
-      - name: Open recipe
+      - name: Open workflow helper
         uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
@@ -144,66 +81,42 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
           show-progress: false
-          sparse-checkout: .github/actions/table
-      - name: Set table
-        uses: ./recipe/.github/actions/table
+          sparse-checkout: .github/actions/private-pin
+
+      - name: Resolve private Workspace pin
+        id: pin
+        uses: ./recipe/.github/actions/private-pin
         with:
-          mix: ${{ secrets.MIX_REPO }}
-          mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
-          mix_ref: ${{ needs.gate.outputs.mix_ref }}
           fill: ${{ secrets.FILL_REPO }}
           fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-          fill_ref: ${{ needs.gate.outputs.fill_ref }}
-      - name: Taste
+          batch-tag: ${{ inputs.batch_tag }}
+          delivery-tag: ${{ inputs.delivery_tag }}
+          project: workspace
+
+      - name: Open private Workspace
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.pin.outputs.repo }}
+          token: ${{ secrets[vars.MIX_KEY_NAME] }}
+          ref: ${{ steps.pin.outputs.ref }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+
+      - name: Taste quietly
         shell: pwsh
         run: |
           $log=Join-Path $env:RUNNER_TEMP 'doctor-windows.log'
-          try {
-            & ./mix/Tools/BakeDoctor.ps1 -Mode Windows -Fill (Join-Path $PWD.Path 'filling') *>&1 | Set-Content -LiteralPath $log
+          try{
+            & ./source/Tools/BakeDoctor.ps1 -Mode Windows -Fill (Join-Path $PWD.Path 'filling') *>&1 | Set-Content -LiteralPath $log
             if($LASTEXITCODE){throw 'windows rejected'}
-            Write-Host '[Doctor] windows ready'
-          } catch {
-            $crumb=if(Test-Path $log){(Get-FileHash $log -Algorithm SHA256).Hash.ToLowerInvariant().Substring(0,16)}else{'none'}
+            Write-Host '[DOCTOR/WINDOWS][OK]'
+          }catch{
             $phase='unknown'
             if(Test-Path $log){$m=[regex]::Match((Get-Content -LiteralPath $log -Raw),'(?m)^DOCTOR_SAFE_PHASE=([a-z0-9-]{1,48})\r?$');if($m.Success){$phase=$m.Groups[1].Value}}
-            Write-Host "[Doctor] windows rejected phase=$phase crumb=$crumb"
+            Write-Host "[DOCTOR/WINDOWS][FAIL] phase=$phase"
             exit 1
-          } finally {
+          }finally{
             if(Test-Path $log){Remove-Item $log -Force -ErrorAction SilentlyContinue}
           }
-  mark:
-    name: Record snapshot
-    needs: [gate, portable, windows]
-    if: ${{ always() && needs.gate.result == 'success' && needs.gate.outputs.run == 'true' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Open delivery snapshot
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ secrets.FILL_REPO }}
-          token: ${{ secrets[vars.FILL_KEY_NAME] }}
-          ref: ${{ needs.gate.outputs.fill_ref }}
-          path: filling
-          fetch-depth: 1
-          fetch-tags: false
-          persist-credentials: true
-          show-progress: false
-      - name: Record result
-        shell: pwsh
-        env:
-          PORTABLE_RESULT: ${{ needs.portable.result }}
-          WINDOWS_RESULT: ${{ needs.windows.result }}
-        run: |
-          $results=@($env:PORTABLE_RESULT,$env:WINDOWS_RESULT)
-          $status=if($results-contains'failure'){'failure'}elseif($results-contains'cancelled'){'cancelled'}elseif(@($results|Where-Object{$_ -ne 'success'}).Count){'failure'}else{'success'}
-          $mix='${{ needs.gate.outputs.mix_ref }}'
-          $fill='${{ needs.gate.outputs.fill_ref }}'
-          $flow='${{ needs.gate.outputs.workflow_ref }}'
-          $message="schema=2`nsource=$mix`ndelivery=$fill`nworkflow=$flow`nstatus=$status"
-          & git -C filling config user.name pastry-bot
-          & git -C filling config user.email pastry-bot@users.noreply.github.com
-          & git -C filling tag -a -f pastry-doctor $fill -m $message
-          if($LASTEXITCODE){throw 'marker creation rejected'}
-          & git -C filling push --force origin refs/tags/pastry-doctor
-          if($LASTEXITCODE){throw 'marker push rejected'}
-          Write-Host "[Doctor] snapshot recorded status=$status"
