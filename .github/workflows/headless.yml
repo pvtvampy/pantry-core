@@ -3,31 +3,26 @@ name: Pantry Runtime Smoke
 on:
   workflow_call:
     inputs:
-      mix_ref:
+      batch_tag:
         required: true
         type: string
-      fill_ref:
-        required: false
-        default: main
+      delivery_tag:
+        required: true
         type: string
 
 permissions:
   contents: read
 
-concurrency:
-  group: headless-core
-  cancel-in-progress: false
-
 jobs:
   test:
     name: Headless serial checks
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       KYRON_SERIAL_BUILD: '1'
       KYRON_BUILD_JOBS: '1'
     steps:
-      - name: Open recipe
+      - name: Open workflow helper
         uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
@@ -35,19 +30,31 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
           show-progress: false
-          sparse-checkout: .github/actions/table
-      - name: Set table
-        uses: ./recipe/.github/actions/table
+          sparse-checkout: .github/actions/private-pin
+
+      - name: Resolve private Workspace pin
+        id: pin
+        uses: ./recipe/.github/actions/private-pin
         with:
-          mix: ${{ secrets.MIX_REPO }}
-          mix-key: ${{ secrets[vars.MIX_KEY_NAME] }}
-          mix_ref: ${{ inputs.mix_ref || 'main' }}
           fill: ${{ secrets.FILL_REPO }}
           fill-key: ${{ secrets[vars.FILL_KEY_NAME] }}
-          fill_ref: ${{ inputs.fill_ref || 'main' }}
-      - name: Run headless suite one by one
-        shell: powershell
-        working-directory: mix
+          batch-tag: ${{ inputs.batch_tag }}
+          delivery-tag: ${{ inputs.delivery_tag }}
+          project: workspace
+
+      - name: Open private Workspace
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.pin.outputs.repo }}
+          token: ${{ secrets[vars.MIX_KEY_NAME] }}
+          ref: ${{ steps.pin.outputs.ref }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+
+      - name: Run headless matrix serially and quietly
+        shell: pwsh
         run: |
           $targets=@(
             @{Configuration='Debug';Platform='x64'},
@@ -56,7 +63,15 @@ jobs:
             @{Configuration='Release';Platform='Win32'}
           )
           foreach($target in $targets){
-            Write-Host ("[HEADLESS][SERIAL] configuration={0} platform={1}" -f $target.Configuration,$target.Platform)
-            & .\Tools\Test-KyronHeadless.ps1 -Suite All -Configuration $target.Configuration -Platform $target.Platform
-            if($LASTEXITCODE){exit $LASTEXITCODE}
+            $log=Join-Path $env:RUNNER_TEMP ("headless-{0}-{1}.log"-f$target.Configuration,$target.Platform)
+            try{
+              & ./source/Tools/Test-KyronHeadless.ps1 -Suite All -Configuration $target.Configuration -Platform $target.Platform *>&1 | Set-Content -LiteralPath $log
+              if($LASTEXITCODE){throw 'headless rejected'}
+              Write-Host ("[HEADLESS][OK] configuration={0} platform={1}"-f$target.Configuration,$target.Platform)
+            }catch{
+              Write-Host ("[HEADLESS][FAIL] configuration={0} platform={1}"-f$target.Configuration,$target.Platform)
+              exit 1
+            }finally{
+              if(Test-Path $log){Remove-Item $log -Force -ErrorAction SilentlyContinue}
+            }
           }
