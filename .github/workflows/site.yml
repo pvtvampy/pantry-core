@@ -6,21 +6,35 @@ on:
     paths-ignore:
       - 'kyron/**'
       - '.github/workflows/patisserie.yml'
+      - '.github/workflows/source-pin.yml'
+      - '.github/workflows/project-sdk.yml'
+      - '.github/workflows/project-web.yml'
+      - '.github/workflows/project-workspace.yml'
       - '.github/workflows/box.yml'
       - '.github/workflows/doctor.yml'
       - '.github/workflows/headless.yml'
+      - '.github/actions/private-pin/**'
   pull_request:
     branches: [main]
     paths-ignore:
       - 'kyron/**'
+      - '.github/workflows/patisserie.yml'
+      - '.github/workflows/source-pin.yml'
+      - '.github/workflows/project-sdk.yml'
+      - '.github/workflows/project-web.yml'
+      - '.github/workflows/project-workspace.yml'
+      - '.github/workflows/box.yml'
+      - '.github/workflows/doctor.yml'
+      - '.github/workflows/headless.yml'
+      - '.github/actions/private-pin/**'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: project-rev-site-${{ github.ref }}
-  cancel-in-progress: true
+  group: kyron-source-pipeline-main
+  cancel-in-progress: false
 
 jobs:
   verify:
